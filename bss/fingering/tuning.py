@@ -57,8 +57,8 @@ def _t(name: str, notes: str, frets: int = 24) -> dict:
 
 
 PRESETS: list[dict] = [
-    _t("4弦 レギュラー (E A D G)", "E1 A1 D2 G2"),
     _t("5弦 レギュラー (B E A D G)", "B0 E1 A1 D2 G2"),
+    _t("4弦 レギュラー (E A D G)", "E1 A1 D2 G2"),
     _t("4弦 半音下げ (Eb Ab Db Gb)", "D#1 G#1 C#2 F#2"),
     _t("4弦 ドロップD (D A D G)", "D1 A1 D2 G2"),
     _t("4弦 全音下げ (D G C F)", "D1 G1 C2 F2"),

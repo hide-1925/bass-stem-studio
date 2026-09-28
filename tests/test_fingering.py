@@ -96,6 +96,6 @@ def test_presets_are_valid(preset):
 
 
 def test_five_string_keeps_string_numbers():
-    five = tuning_from_dict(PRESETS[1])  # B E A D G
+    five = tuning_from_dict(next(p for p in PRESETS if p["strings"] == [23, 28, 33, 38, 43]))  # B E A D G
     assert five.open_pitch(1) == 43 and five.open_pitch(4) == 28 and five.open_pitch(5) == 23
     assert candidates(23, five) == [(5, 0)]

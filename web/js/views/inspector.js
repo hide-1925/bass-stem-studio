@@ -25,6 +25,24 @@ export class Inspector {
       this.root.append(el('p', { class: 'hint' }, '採譜が完了すると、ここで選択した音符の値を編集できます。'));
       return;
     }
+    if (ids.length === 0 && app.viewMode === 'score') {
+      this.root.append(
+        el('h3', {}, '譜面'),
+        el('p', { class: 'hint' }, `全 ${app.notes.size} 音。譜面をクリックして音符か入力位置（拍と弦）を選びます。`),
+        el('ul', { class: 'keys' },
+          el('li', {}, el('kbd', {}, 'クリック'), ' 選択＋そこから再生'),
+          el('li', {}, el('kbd', {}, '← →'), ' 前後の拍 ', el('kbd', {}, '↑ ↓'), ' 入力する弦'),
+          el('li', {}, el('kbd', {}, '0〜9'), ' フレット入力（休符なら音符を追加。素早く2桁で10以上）'),
+          el('li', {}, el('kbd', {}, 'テンキー + −'), ' 音価を短く / 長く'),
+          el('li', {}, el('kbd', {}, '.'), ' 付点 ', el('kbd', {}, '/'), ' 3連符'),
+          el('li', {}, el('kbd', {}, 'Shift+↑ ↓'), ' 半音 ', el('kbd', {}, 'Ctrl+↑ ↓'), ' オクターブ'),
+          el('li', {}, el('kbd', {}, 'Alt+↑ ↓'), ' 同じ音高で弦を変更'),
+          el('li', {}, el('kbd', {}, 'Shift+← →'), ' 位置を1グリッド移動'),
+          el('li', {}, el('kbd', {}, 'Del'), ' 削除 ', el('kbd', {}, 'Ctrl+Z / Y'), ' 取り消し / やり直し'),
+          el('li', {}, el('kbd', {}, 'V'), ' タイムラインに戻る'),
+        ));
+      return;
+    }
     if (ids.length === 0) {
       this.root.append(
         el('h3', {}, '音符'),
@@ -78,6 +96,20 @@ export class Inspector {
     techSel.addEventListener('change', () => app.notes.setFields(n.id, { technique: techSel.value || null }, '奏法'));
     const lock = el('input', { type: 'checkbox', checked: n.fingering_edited });
     lock.addEventListener('change', () => app.notes.setFields(n.id, { fingering_edited: lock.checked }, lock.checked ? '運指を固定' : '運指の固定を解除'));
+    const sc = app.scoreView ? app.scoreView.describe(n.id) : null;
+    const scoreFields = [];
+    if (sc) {
+      const v = sc.v;
+      const btn = (label, on, fn, title) => el('button', { class: on ? 'on' : '', title, onclick: fn }, label);
+      scoreFields.push(
+        el('div', { class: 'field' }, el('label', {}, '譜面の位置'), el('span', { class: 'small' }, `${sc.bar} 小節・${sc.beat}`)),
+        el('div', { class: 'field' }, el('label', {}, '音価'), el('span', { class: 'small' }, sc.value)),
+        el('div', { class: 'values' },
+          ...[[1, '全'], [2, '2分'], [4, '4分'], [8, '8分'], [16, '16分'], [32, '32分']].map(([b, l]) =>
+            btn(l, v && v.base === b, () => app.scoreView.setBase(b), `${l}音符にする`)),
+          btn('付点', v && v.dots, () => app.scoreView.toggleDot(), '付点の切り替え'),
+          btn('3連', v && v.tuplet, () => app.scoreView.toggleTriplet(), '3連符の切り替え')));
+    }
     const conf = Math.round(n.confidence * 100);
     const low = n.confidence < (app.project.confidence_threshold ?? 0.5);
     this.root.append(
@@ -90,6 +122,7 @@ export class Inspector {
       el('div', { class: 'sub' }, '↑ 音高は同じまま運指だけ変える修正'),
       el('div', { class: 'field' }, el('label', {}, '運指を固定'), lock),
       el('div', { class: 'field' }, el('label', {}, '奏法'), techSel),
+      ...scoreFields,
       el('dl', { class: 'meta' },
         el('dt', {}, '検出元'), el('dd', {}, SOURCE_LABEL[n.source] || n.source),
         el('dt', {}, '状態'), el('dd', {}, [n.edited ? '音高/時刻を手修正' : '自動', n.fingering_edited ? '運指手修正' : ''].filter(Boolean).join('・')),

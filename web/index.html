@@ -24,6 +24,7 @@
         <button data-export="midi-strings">MIDI（弦ごとにチャンネル）</button>
         <button data-export="csv">音符 CSV</button>
         <button data-export="pdf">TAB 印刷用 PDF</button>
+        <button data-export="gp">Guitar Pro (.gp)</button>
       </div>
     </div>
     <button id="btn-settings" disabled>設定</button>
@@ -68,7 +69,12 @@
   <div class="workspace">
     <main class="tracks" id="tracks">
       <div class="row ruler-row">
-        <div class="head">時間 / 小節</div>
+        <div class="head">
+          <div class="view-switch" role="tablist" title="表示の切り替え（V キー）">
+            <button data-view="timeline" class="sel">タイムライン</button><button data-view="score">譜面</button>
+          </div>
+          <span class="ruler-label">小節</span>
+        </div>
         <canvas id="ruler"></canvas>
       </div>
       <div id="stem-rows"></div>
@@ -88,6 +94,51 @@
           <canvas id="tab-labels" class="labels-canvas"></canvas>
         </div>
         <canvas id="tab"></canvas>
+      </div>
+      <div class="row score-row">
+        <div class="head score-head">
+          <div class="head-title">譜面 <span class="dim">（五線＋TAB）</span></div>
+          <div class="score-tempo" id="score-tempo">テンポ未設定</div>
+          <button id="btn-tempo-est" class="small" title="ドラムとベースのステムから BPM と1小節目の位置を推定します（数秒）">テンポを自動推定</button>
+          <div class="btn-row" title="推定がずれているときの手直し">
+            <button class="small" data-tempo="half" title="BPM を半分に">÷2</button>
+            <button class="small" data-tempo="double" title="BPM を2倍に">×2</button>
+            <button class="small" data-tempo="prev" title="1小節目の頭を1拍前へ（小節線を1拍ずらす）">◀1拍</button>
+            <button class="small" data-tempo="next" title="1小節目の頭を1拍後へ（小節線を1拍ずらす）">1拍▶</button>
+          </div>
+          <label class="opt">表示
+            <select id="sc-staves"><option value="both">五線＋TAB</option><option value="tab">TAB（リズム付き）</option><option value="score">五線のみ</option></select>
+          </label>
+          <label class="opt">調号 <select id="sc-key"></select></label>
+          <label class="opt" title="これより細かい音価は使いません">最小音価
+            <select id="sc-grid"><option value="1/8">8分</option><option value="1/16">16分</option><option value="1/32">32分</option></select>
+          </label>
+          <label class="opt">3連符
+            <select id="sc-trip"><option value="auto">自動判定</option><option value="off">使わない</option></select>
+          </label>
+          <label class="opt" title="これより短い隙間は直前の音符を伸ばして埋めます（手で音価を決めた音符は除く）">休符
+            <select id="sc-rest"><option value="1/32">32分から表示</option><option value="1/16">16分から表示</option><option value="1/8">8分から表示</option><option value="1/4">4分から表示</option></select>
+          </label>
+          <div class="btn-row">拡大
+            <button id="sc-zoom-out" class="small" title="縮小">−</button><span id="sc-zoom" class="mono small">100%</span><button id="sc-zoom-in" class="small" title="拡大">＋</button>
+          </div>
+          <label class="opt" title="譜面表示中のステム行（ミュート・ソロ）の高さ">ステム行
+            <select id="sc-stems"><option value="normal">標準</option><option value="compact">縮小</option><option value="hidden">隠す</option></select>
+          </label>
+          <button id="btn-export-gp" class="small primary" title="Guitar Pro 7 / 8 形式（.gp）で保存">Guitar Pro (.gp) 書き出し</button>
+          <div class="dim small" id="score-info"></div>
+        </div>
+        <div class="score-main">
+          <div class="score-tools" id="score-tools">
+            <span class="dim small">音価</span>
+            <button class="val" data-base="1" title="全音符">全</button><button class="val" data-base="2" title="2分音符">2分</button><button class="val" data-base="4" title="4分音符">4分</button><button class="val" data-base="8" title="8分音符">8分</button><button class="val" data-base="16" title="16分音符">16分</button><button class="val" data-base="32" title="32分音符">32分</button>
+            <button class="val" data-mod="dot" title="付点（. キー）">付点</button><button class="val" data-mod="triplet" title="3連符（/ キー）">3連</button>
+            <span class="sep"></span>
+            <button data-nudge="-1" title="1グリッド前へ（Shift+←）">◀ 位置</button><button data-nudge="1" title="1グリッド後へ（Shift+→）">位置 ▶</button>
+            <span class="keys-help dim small">数字: フレット入力　←→: 拍　↑↓: 弦　Shift+↑↓: 半音　テンキー＋−: 音価</span>
+          </div>
+          <div class="score-scroll" id="score" tabindex="0"></div>
+        </div>
       </div>
       <div class="empty" id="empty-state">
         <h2>曲を読み込んで始めましょう</h2>

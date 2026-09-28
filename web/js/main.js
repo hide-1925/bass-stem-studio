@@ -5,6 +5,7 @@ import { AudioEngine } from './audio/engine.js';
 import { isActive, normalizeFx } from './audio/fx.js';
 import { TabCapture } from './capture.js';
 import { ErrorCapture, clientInfo } from './diag.js';
+import { Timing, firstBarIndex, tempoOk } from './notes/score.js';
 import { NoteStore } from './notes/store.js';
 import { debounce, dbToLin, el, fmtTime, linToDb, noteName, parseNoteName, quantizeTime, tempoValid } from './util.js';
 import { DiagPanel } from './views/diagpanel.js';
@@ -12,6 +13,7 @@ import { FxPanel } from './views/fxpanel.js';
 import { Inspector } from './views/inspector.js';
 import { StemLaneView, attachSeekAndLoopDrag, buildStemHeader } from './views/lanes.js';
 import { PianoRollView } from './views/pianoroll.js';
+import { ScoreView } from './views/score.js';
 import { TabView } from './views/tab.js';
 import { OverviewView, RulerView, TimeView } from './views/timeline.js';
 
@@ -32,7 +34,8 @@ class App {
     this.follow = true;
     this.clickToPlay = true;
     this.renderVersion = 0;
-    this.tuning = { strings: [28, 33, 38, 43], frets: 24 };
+    this.tuning = { strings: [23, 28, 33, 38, 43], frets: 24 }; // 5-string B E A D G
+    this.viewMode = 'timeline';
     this.gainSteps = [-30, -20, -10, 0, 10];
     this.presets = [];
     this.laneViews = [];
@@ -50,6 +53,7 @@ class App {
     this.overview = new OverviewView($('overview'), this);
     this.roll = new PianoRollView($('roll'), $('roll-keys'), this);
     this.tab = new TabView($('tab'), $('tab-labels'), this);
+    this.scoreView = new ScoreView($('score'), this);
     this.inspector = new Inspector($('inspector'), this);
     this.fxPanel = new FxPanel($('fx'), this);
     this.diag = new DiagPanel(this, capture);
@@ -58,6 +62,7 @@ class App {
     this.tab.attach();
     attachSeekAndLoopDrag($('ruler'), this);
     this._bindUi();
+    this._bindScoreUi();
     this._bindKeys();
     this.notes.addEventListener('change', () => this._onNotesChanged());
     this.engine.addEventListener('limiter', (e) => this._onLimiter(e.detail));
@@ -73,6 +78,9 @@ class App {
       this.status(`サーバーに接続できません: ${e.message}`, true);
     }
     this.inspector.render();
+    let mode = 'timeline';
+    try { mode = localStorage.getItem('bss:view') || 'timeline'; } catch (_) { /* storage unavailable */ }
+    this.setViewMode(mode, false);
     const last = localStorage.getItem('bss:lastProject');
     if (last) this.openProject(last).catch(() => localStorage.removeItem('bss:lastProject'));
   }
@@ -131,6 +139,8 @@ class App {
         this.view.clampT0();
       }
       this.roll.fitRange();
+      this.scoreView.reset();
+      this._syncScoreUi();
       this._updateAll();
       const job = data.active_job || (data.last_job && data.last_job.status === 'error' ? data.last_job : null);
       if (job) this._watchJob(job);
@@ -388,19 +398,29 @@ class App {
   select(ids, render = true) {
     this.selection = new Set(ids);
     this.renderVersion++;
+    this._afterSelection();
     if (render) this.inspector.render();
     else this._inspectorLater();
   }
 
   _inspectorLater() {
     clearTimeout(this._inspT);
-    this._inspT = setTimeout(() => this.inspector.render(), 60);
+    this._inspT = setTimeout(() => {
+      this.inspector.render();
+      this._updateValueButtons();
+    }, 60);
+  }
+
+  _afterSelection() {
+    this._updateValueButtons();
+    this.scoreView.renderSelection();
   }
 
   toggleSelect(id) {
     if (this.selection.has(id)) this.selection.delete(id);
     else this.selection.add(id);
     this.renderVersion++;
+    this._afterSelection();
     this.inspector.render();
   }
 
@@ -460,6 +480,8 @@ class App {
   _onNotesChanged() {
     for (const id of [...this.selection]) if (!this.notes.get(id)) this.selection.delete(id);
     this.renderVersion++;
+    this.scoreView.invalidate();
+    this._barBaseKey = null;
     this._updateDirty();
     this._inspectorLater();
   }
@@ -529,6 +551,7 @@ class App {
     this._updateTuningLabel();
     if (this.notes.size) await this.reoptimize(mode === 'keep', 'チューニング変更（運指再計算）', mode === 'discard');
     this.roll.fitRange();
+    this.scoreView.invalidate();
     this.renderVersion++;
     return true;
   }
@@ -606,6 +629,8 @@ class App {
       this.notes.locked = false;
       await this._loadNotes();
       this.roll.fitRange();
+      this.scoreView.invalidate();
+      this._syncScoreUi();
       const t = data.project.transcription;
       this.status(`採譜完了: ${t.notes} 音（${t.name}${t.merge?.kept_manual ? `、手修正 ${t.merge.kept_manual} 音を保持` : ''}）`);
     }
@@ -659,6 +684,7 @@ class App {
   // export
   async exportAs(kind) {
     if (!this.project) return;
+    if (kind === 'gp') return this.exportGp();
     if (this.notes.dirty && !(await this.save())) return;
     const map = { midi: ['midi', {}], 'midi-strings': ['midi', { per_string: 1 }], csv: ['csv', {}], pdf: ['pdf', {}] };
     const [fmt, params] = map[kind];
@@ -668,6 +694,198 @@ class App {
     a.remove();
     const q = this.project.quantize?.export && tempoValid(this.project.tempo);
     this.status(`${fmt.toUpperCase()} を書き出しました（量子化: ${q ? this.project.quantize.grid : 'なし'}）`);
+  }
+
+  async exportGp() {
+    if (!this.project) return;
+    try {
+      const r = await this.scoreView.exportGp();
+      const name = `${(this.project.title || 'bass').replace(/[<>:"/\\|?*\n\r\t]/g, '_').slice(0, 80)}.gp`;
+      const url = URL.createObjectURL(new Blob([r.bytes], { type: 'application/octet-stream' }));
+      const a = el('a', { href: url, download: name });
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      const extra = r.stats.unplaced.length ? `、弦が決まらず除外 ${r.stats.unplaced.length} 音` : '';
+      this.status(`Guitar Pro 形式で書き出しました（${r.bars} 小節・${r.notes} 音${extra}）`);
+    } catch (e) {
+      this.status(`Guitar Pro 書き出しに失敗: ${e.message}`, true);
+    }
+  }
+
+  // =======================================================================================
+  // score (notation + TAB) view
+  setViewMode(mode, save = true) {
+    this.viewMode = mode === 'score' ? 'score' : 'timeline';
+    const tracks = $('tracks');
+    tracks.classList.toggle('mode-score', this.viewMode === 'score');
+    document.querySelectorAll('.view-switch button').forEach((b) => b.classList.toggle('sel', b.dataset.view === this.viewMode));
+    if (this.viewMode === 'score') this.scoreView.show();
+    else this.scoreView.hide();
+    this.renderVersion++;
+    this.inspector.render();
+    if (save) {
+      try { localStorage.setItem('bss:view', this.viewMode); } catch (_) { /* storage unavailable */ }
+    }
+  }
+
+  // Bar numbers shared by the ruler and the score (bar 1 = bar containing the song start).
+  barNumber(k) {
+    const tempo = this.project?.tempo;
+    if (!tempoOk(tempo)) return k + 1;
+    const key = `${JSON.stringify(tempo)}|${this.notes.version}`;
+    if (key !== this._barBaseKey) {
+      this._barBaseKey = key;
+      const first = this.notes.sorted().find((n) => n.string != null);
+      this._barBase = firstBarIndex(new Timing(tempo), first ? first.start_sec : null);
+    }
+    return k - this._barBase + 1;
+  }
+
+  onScoreModel(model) {
+    const sel = $('sc-key');
+    const auto = sel.querySelector('option[value="auto"]');
+    if (auto) auto.textContent = model && model.key.auto ? `自動（${model.key.name}）` : '自動';
+    this.inspector.render();
+  }
+
+  setScoreInfo(text) {
+    const n = this.scoreView.model?.stats;
+    const extra = [];
+    if (n?.tripletBeats) extra.push(`3連 ${n.tripletBeats} 拍`);
+    if (n?.unplaced.length) extra.push(`弦が決まらない音 ${n.unplaced.length}`);
+    if (n?.hidden.length) extra.push(`同じ位置・同じ弦の音 ${n.hidden.length} 個を1つにまとめて表示`);
+    $('score-info').textContent = [text, ...extra].join(' / ');
+  }
+
+  _syncScoreUi() {
+    const p = this.project;
+    const t = p?.tempo;
+    const box = $('score-tempo');
+    if (!p) return;
+    if (tempoOk(t)) {
+      const src = t.source === 'auto' ? '自動推定' : '手入力';
+      const warn = t.source === 'auto' && t.stable === false;
+      box.textContent = `♩ = ${Number(t.bpm).toFixed(2).replace(/\.?0+$/, '')}　${t.beats_per_bar || 4}/${t.beat_unit || 4}　1小節目 ${Number(t.offset_sec || 0).toFixed(3)}s（${src}）` +
+        (warn ? '\n⚠ テンポが一定でない可能性があります。後半で小節線がずれる場合は手入力してください。' : '');
+      box.classList.toggle('warn', warn);
+    } else {
+      box.textContent = 'テンポ未設定（譜面には BPM が必要です）';
+      box.classList.add('warn');
+    }
+    const o = { ...this.scoreView.opts };
+    $('sc-staves').value = o.staves;
+    $('sc-grid').value = o.grid;
+    $('sc-trip').value = o.triplets;
+    $('sc-rest').value = o.rest_min;
+    $('sc-key').value = String(o.key);
+    $('sc-zoom').textContent = `${Math.round((Number(o.scale) || 1) * 100)}%`;
+  }
+
+  async setScoreOption(patch) {
+    if (!this.project) return;
+    this.project.score = { ...(this.project.score || {}), ...patch };
+    this._syncScoreUi();
+    this.scoreView.invalidate();
+    try { await api.patchProject(this.project.id, { score: patch }); } catch (e) { this.status(e.message, true); }
+  }
+
+  async setTempo(patch, label) {
+    if (!this.project) return;
+    const tempo = { ...(this.project.tempo || {}), ...patch, source: 'manual' };
+    const r = await api.patchProject(this.project.id, { tempo });
+    this.project = { ...r.project, mixer: this.project.mixer, playback: this.project.playback, fx: this.project.fx };
+    this.renderVersion++;
+    this._barBaseKey = null;
+    this.scoreView.invalidate();
+    this._syncScoreUi();
+    if (label) this.status(label);
+  }
+
+  async estimateTempo() {
+    if (!this.project) return null;
+    this.loading('テンポと1小節目の位置を推定中…');
+    try {
+      const r = await api.estimateTempo(this.project.id, { apply: true });
+      this.project = { ...r.project, mixer: this.project.mixer, playback: this.project.playback, fx: this.project.fx };
+      this.renderVersion++;
+      this._barBaseKey = null;
+      this.scoreView.invalidate();
+      this._syncScoreUi();
+      const e = r.estimate;
+      this.status(`テンポ推定: ♩=${e.bpm}、1小節目 ${e.offset_sec.toFixed(3)} 秒（${e.elapsed_sec} 秒）${e.stable ? '' : '　⚠ テンポが一定でない可能性'}`);
+      return e;
+    } catch (e) {
+      this.status(`テンポ推定に失敗: ${e.message}`, true);
+      return null;
+    } finally {
+      this.loading(null);
+    }
+  }
+
+  _bindScoreUi() {
+    document.querySelectorAll('.view-switch button').forEach((b) => b.addEventListener('click', () => this.setViewMode(b.dataset.view)));
+    const keySel = $('sc-key');
+    keySel.append(el('option', { value: 'auto' }, '自動'));
+    const names = { '-7': 'C♭', '-6': 'G♭', '-5': 'D♭', '-4': 'A♭', '-3': 'E♭', '-2': 'B♭', '-1': 'F', 0: 'C', 1: 'G', 2: 'D', 3: 'A', 4: 'E', 5: 'B', 6: 'F♯', 7: 'C♯' };
+    for (let f = -7; f <= 7; f++) {
+      const acc = f === 0 ? 'なし' : f < 0 ? `♭${-f}` : `♯${f}`;
+      keySel.append(el('option', { value: String(f) }, `${acc}（${names[f]} / ${['A♭m', 'E♭m', 'B♭m', 'Fm', 'Cm', 'Gm', 'Dm', 'Am', 'Em', 'Bm', 'F♯m', 'C♯m', 'G♯m', 'D♯m', 'A♯m'][f + 7]}）`));
+    }
+    keySel.addEventListener('change', () => this.setScoreOption({ key: keySel.value === 'auto' ? 'auto' : Number(keySel.value) }));
+    $('sc-staves').addEventListener('change', (e) => this.setScoreOption({ staves: e.target.value }));
+    $('sc-grid').addEventListener('change', (e) => this.setScoreOption({ grid: e.target.value }));
+    $('sc-trip').addEventListener('change', (e) => this.setScoreOption({ triplets: e.target.value }));
+    $('sc-rest').addEventListener('change', (e) => this.setScoreOption({ rest_min: e.target.value }));
+    const zoom = (f) => {
+      const cur = Number(this.scoreView.opts.scale) || 1;
+      this.setScoreOption({ scale: Math.round(Math.min(1.8, Math.max(0.6, cur * f)) * 100) / 100 });
+    };
+    $('sc-zoom-in').addEventListener('click', () => zoom(1.15));
+    $('sc-zoom-out').addEventListener('click', () => zoom(1 / 1.15));
+    // stem rows while the score is shown: the score needs the height more than the waveforms do
+    const setStems = (v) => {
+      $('tracks').classList.toggle('stems-compact', v === 'compact');
+      $('tracks').classList.toggle('stems-hidden', v === 'hidden');
+      $('sc-stems').value = v;
+      this.renderVersion++;
+    };
+    let stems = 'compact';
+    try { stems = localStorage.getItem('bss:scoreStems') || 'compact'; } catch (_) { /* storage unavailable */ }
+    setStems(stems);
+    $('sc-stems').addEventListener('change', (e) => {
+      setStems(e.target.value);
+      try { localStorage.setItem('bss:scoreStems', e.target.value); } catch (_) { /* storage unavailable */ }
+    });
+    $('btn-tempo-est').addEventListener('click', () => this.estimateTempo());
+    document.querySelectorAll('[data-tempo]').forEach((b) => b.addEventListener('click', () => {
+      const t = this.project?.tempo;
+      if (!tempoOk(t)) { this.status('先にテンポを推定するか、設定で BPM を入力してください。', true); return; }
+      const beat = 60 / t.bpm;
+      const bar = beat * (t.beats_per_bar || 4);
+      const off = Number(t.offset_sec) || 0;
+      if (b.dataset.tempo === 'half') this.setTempo({ bpm: +(t.bpm / 2).toFixed(3) }, 'BPM を半分にしました');
+      else if (b.dataset.tempo === 'double') this.setTempo({ bpm: +(t.bpm * 2).toFixed(3) }, 'BPM を2倍にしました');
+      else {
+        let o = off + (b.dataset.tempo === 'next' ? beat : -beat);
+        if (o >= bar - 1e-3) o -= bar; // keep bar 1 near the start of the song
+        if (o < -bar + 1e-3) o += bar;
+        this.setTempo({ offset_sec: +o.toFixed(4) }, '小節線を1拍ずらしました');
+      }
+    }));
+    $('btn-export-gp').addEventListener('click', () => this.exportGp());
+    $('score-tools').querySelectorAll('button[data-base]').forEach((b) => b.addEventListener('click', () => this.scoreView.setBase(Number(b.dataset.base))));
+    $('score-tools').querySelector('[data-mod="dot"]').addEventListener('click', () => this.scoreView.toggleDot());
+    $('score-tools').querySelector('[data-mod="triplet"]').addEventListener('click', () => this.scoreView.toggleTriplet());
+    $('score-tools').querySelectorAll('button[data-nudge]').forEach((b) => b.addEventListener('click', () => this.scoreView.nudge(Number(b.dataset.nudge))));
+  }
+
+  _updateValueButtons() {
+    const v = this.selection.size ? this.scoreView.currentValue() : null;
+    $('score-tools').querySelectorAll('button[data-base]').forEach((b) => b.classList.toggle('on', !!v && v.base === Number(b.dataset.base)));
+    $('score-tools').querySelector('[data-mod="dot"]').classList.toggle('on', !!v && !!v.dots);
+    $('score-tools').querySelector('[data-mod="triplet"]').classList.toggle('on', !!v && !!v.tuplet);
   }
 
   // =======================================================================================
@@ -798,6 +1016,12 @@ class App {
     const unit = el('select', {}, ...[2, 4, 8, 16].map((u) => el('option', { value: u, selected: (p.tempo?.beat_unit ?? 4) === u }, String(u))));
     const off = el('input', { type: 'number', step: 0.001, value: (p.tempo?.offset_sec ?? 0).toFixed(3) });
     const offNow = el('button', { class: 'small', onclick: () => { off.value = this.engine.position().toFixed(3); } }, '現在位置を1拍目に');
+    const estBtn = el('button', { class: 'small', title: 'ドラムとベースのステムから推定（数秒）', onclick: async () => {
+      estBtn.disabled = true;
+      const e = await this.estimateTempo();
+      estBtn.disabled = false;
+      if (e) { bpm.value = e.bpm; bpb.value = e.beats_per_bar; off.value = e.offset_sec.toFixed(3); }
+    } }, '自動推定');
     const grid = el('select', {}, ...['1/4', '1/8', '1/16', '1/32', '1/8T', '1/16T'].map((g) => el('option', { value: g, selected: (p.quantize?.grid || '1/16') === g }, g)));
     const qDisp = el('input', { type: 'checkbox', checked: !!p.quantize?.display });
     const qExp = el('input', { type: 'checkbox', checked: !!p.quantize?.export });
@@ -818,13 +1042,13 @@ class App {
         el('label', {}, '優先ポジション'), el('div', { class: 'inline' }, posIn, el('span', { class: 'dim small' }, 'フレット（この付近を優先）'))),
         el('p', { class: 'note' }, '変更すると運指候補を再計算します。弦・フレットの手修正がある場合は扱いを確認します。')),
       el('fieldset', {}, el('legend', {}, 'テンポ・量子化（任意）'), el('div', { class: 'grid' },
-        el('label', {}, 'BPM'), bpm,
+        el('label', {}, 'BPM'), el('div', { class: 'inline' }, bpm, estBtn),
         el('label', {}, '拍子'), el('div', { class: 'inline' }, bpb, el('span', {}, '/'), unit),
         el('label', {}, '1小節目の開始 (秒)'), el('div', { class: 'inline' }, off, offNow),
         el('label', {}, 'グリッド'), grid,
         el('label', {}, '量子化して表示'), qDisp,
         el('label', {}, '量子化して書き出し'), qExp),
-        el('p', { class: 'note' }, '既定は量子化なし（原曲の揺れを保持）。テンポ未設定でも秒単位で表示・PDF化できます。')),
+        el('p', { class: 'note' }, 'テンポは採譜のあとに自動推定します（譜面表示・Guitar Pro 書き出しに使用）。タイムラインの量子化は既定なし（原曲の揺れを保持）。')),
       el('fieldset', {}, el('legend', {}, '採譜'), el('div', { class: 'grid' },
         el('label', {}, '採譜方式'), tr,
         el('label', {}, '低信頼のしきい値'), thr)),
@@ -834,6 +1058,13 @@ class App {
         el('label', {}, '伸縮エンジン'), quality,
         el('label', {}, '現在の分離'), el('span', { class: 'small dim' }, env))),
     );
+    const tempoPatch = () => {
+      const t = { bpm: bpm.value ? Number(bpm.value) : null, beats_per_bar: Number(bpb.value) || 4, beat_unit: Number(unit.value), offset_sec: Number(off.value) || 0 };
+      const old = this.project.tempo || {};
+      const changed = t.bpm !== (old.bpm ?? null) || t.beats_per_bar !== (old.beats_per_bar ?? 4) || t.beat_unit !== (old.beat_unit ?? 4) ||
+        Math.abs(t.offset_sec - (old.offset_sec || 0)) > 5e-4;
+      return changed ? { ...t, source: 'manual' } : t;
+    };
     const collect = () => {
       const strings = stringsIn.value.trim().split(/[\s,]+/).map(parseNoteName);
       if (strings.some((x) => x === null)) throw new Error('開放弦は E1 A1 D2 G2 のように音名で入力してください。');
@@ -843,7 +1074,7 @@ class App {
         patch: {
           title: title.value.trim() || p.title,
           fingering: { ...(p.fingering || {}), preferred_position: Number(posIn.value) },
-          tempo: { bpm: bpm.value ? Number(bpm.value) : null, beats_per_bar: Number(bpb.value) || 4, beat_unit: Number(unit.value), offset_sec: Number(off.value) || 0 },
+          tempo: tempoPatch(),
           quantize: { grid: grid.value, display: qDisp.checked, export: qExp.checked },
           confidence_threshold: Number(thr.value),
           transcriber: tr.value,
@@ -861,6 +1092,9 @@ class App {
       const tuningChanged = JSON.stringify(c.tuning.strings) !== JSON.stringify(this.tuning.strings) || c.tuning.frets !== this.tuning.frets;
       if (tuningChanged && !(await this.changeTuning(c.tuning))) return false;
       this.renderVersion++;
+      this._barBaseKey = null;
+      this.scoreView.invalidate();
+      this._syncScoreUi();
       return true;
     };
     const close = this.modal('設定', body, [
@@ -972,6 +1206,10 @@ class App {
       if (['input', 'select', 'textarea'].includes(tag) && e.key !== 'Escape') return;
       const k = e.key;
       const ctrl = e.ctrlKey || e.metaKey;
+      if (this.viewMode === 'score' && this.project && this.scoreView.onKey(e)) {
+        e.preventDefault();
+        return;
+      }
       let handled = true;
       if (k === ' ') this.togglePlay();
       else if (ctrl && k.toLowerCase() === 's') this.save();
@@ -992,6 +1230,7 @@ class App {
       else if (k === 'm' || k === 'M') this.notes.merge([...this.selection]);
       else if (k === 'f' || k === 'F') { this.follow = !this.follow; $('chk-follow').checked = this.follow; }
       else if (k === 'e' || k === 'E') this.toggleFx();
+      else if (k === 'v' || k === 'V') this.setViewMode(this.viewMode === 'score' ? 'timeline' : 'score');
       else if (k === 'Home') this.engine.seek(this.loop.enabled ? this.loop.a : 0);
       else if (k === '[' || k === ']') {
         const i = SPEEDS.indexOf(this.rate);
@@ -1027,8 +1266,11 @@ class App {
     this.overview.render(pos);
     this.ruler.render(pos);
     for (const lv of this.laneViews) lv.render(pos);
-    this.roll.render(pos);
-    this.tab.render(pos);
+    if (this.viewMode === 'score') this.scoreView.render(pos);
+    else {
+      this.roll.render(pos);
+      this.tab.render(pos);
+    }
     this.fxPanel.render();
     if (this._lastPlaying !== this.engine.playing) {
       this._lastPlaying = this.engine.playing;

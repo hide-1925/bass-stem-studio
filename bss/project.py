@@ -21,12 +21,23 @@ SCHEMA_VERSION = 1
 
 # Keys the UI may PATCH. Analysis results (source/separation/transcription) are written by the server only.
 PATCHABLE_KEYS = {"title", "mixer", "playback", "tuning", "fingering", "tempo", "quantize",
-                  "confidence_threshold", "view", "separator", "transcriber", "fx"}
+                  "confidence_threshold", "view", "separator", "transcriber", "fx", "score"}
 
 # Keys the client always sends whole: replaced instead of deep-merged (so removals stick).
 REPLACE_KEYS = {"fx"}
 
-DEFAULT_TUNING = {"name": "4弦 レギュラー (E A D G)", "strings": [28, 33, 38, 43], "frets": 24}
+DEFAULT_TUNING = {"name": "5弦 レギュラー (B E A D G)", "strings": [23, 28, 33, 38, 43], "frets": 24}
+
+
+# Score (notation + TAB) view / Guitar Pro export: rhythm quantization and display options.
+DEFAULT_SCORE = {
+    "grid": "1/16",       # finest binary note value
+    "triplets": "auto",   # "auto": per beat, when onsets fit an 8th-triplet grid clearly better; "off"
+    "rest_min": "1/8",    # gaps shorter than this are absorbed into the previous note (legato reading)
+    "key": "auto",        # "auto" or fifths as an int (-7..7, flats negative)
+    "staves": "both",     # "both" / "tab" / "score"
+    "scale": 1.0,
+}
 
 
 def now_iso() -> str:
@@ -53,9 +64,12 @@ def default_meta(project_id: str, title: str) -> dict:
         "playback": {"rate": 1.0, "loop": {"enabled": False, "a": 0.0, "b": 0.0}, "position": 0.0},
         "tuning": copy.deepcopy(DEFAULT_TUNING),
         "fingering": {"preferred_position": 3},
-        "tempo": {"bpm": None, "beats_per_bar": 4, "beat_unit": 4, "offset_sec": 0.0},
+        # bpm counts beat_unit notes; offset_sec = beat 1 of bar 1. Estimated after transcription
+        # (source "auto") unless the user sets it (source "manual").
+        "tempo": {"bpm": None, "beats_per_bar": 4, "beat_unit": 4, "offset_sec": 0.0, "source": None},
         "quantize": {"display": False, "export": False, "grid": "1/16"},
         "confidence_threshold": 0.5,
+        "score": copy.deepcopy(DEFAULT_SCORE),
         "fx": {},  # per target ("master" / stem name): EQ, filters, compressor (web/js/audio/fx.js)
         "view": {},
     }

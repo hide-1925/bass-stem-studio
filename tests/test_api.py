@@ -43,6 +43,13 @@ SCRIPT = textwrap.dedent(r'''
     out["events"] = sorted({e["kind"] for e in ev})
     out["client_log"] = [e["message"] for e in c.get("/api/diag/logs?source=client").json()["entries"]]
     r = c.patch(f"/api/projects/{pid}", json={"fx": {"master": {"comp": {"on": True}}}}); out["patch_fx"] = r.status_code
+    proj = c.get(f"/api/projects/{pid}").json()["project"]
+    out["tuning"] = proj["tuning"]["strings"]
+    out["score_grid"] = proj["score"]["grid"]
+    r = c.patch(f"/api/projects/{pid}", json={"score": {"staves": "tab"}})
+    out["patch_score"] = (r.status_code, r.json()["project"]["score"]["staves"], r.json()["project"]["score"]["grid"])
+    r = c.post(f"/api/projects/{pid}/tempo/estimate", json={})  # not decoded yet: no audio to analyse
+    out["tempo_noaudio"] = r.status_code
     r = c.post("/api/diag/report", json={"project_id": pid})
     z = zipfile.ZipFile(io.BytesIO(r.content))
     out["report"] = (r.status_code, "report.json" in z.namelist(), any(n.endswith(".wav") for n in z.namelist()))
@@ -66,6 +73,10 @@ def test_api_smoke(tmp_path):
     assert out["client"] == 200 and "test error" in out["client_log"]
     assert {"server_start", "upload", "upload_rejected", "probe"} <= set(out["events"])
     assert out["patch_fx"] == 200
+    assert out["tuning"] == [23, 28, 33, 38, 43]  # new projects: 5-string B E A D G
+    assert out["score_grid"] == "1/16"
+    assert out["patch_score"] == [200, "tab", "1/16"]  # deep-merged
+    assert out["tempo_noaudio"] == 400
     assert out["report"] == [200, True, False]  # report.json present, no audio inside
     assert out["report_probe"] == "ok"
     assert not (ROOT / "workspace" / "projects" / "should-not-exist").exists()

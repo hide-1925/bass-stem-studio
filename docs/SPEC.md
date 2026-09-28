@@ -125,15 +125,19 @@ workspace/projects/<project_id>/
   "mixer":   { "gains_db": { "vocals": 0, "drums": 0, "guitar": 0, "piano": 0, "other": 0 },
                "mute": { "bass": false, … }, "solo": { … } },
   "playback":{ "rate": 1.0, "loop": { "enabled": false, "a": 0.0, "b": 0.0 }, "position": 0.0 },
-  "tuning":  { "name": "4弦 レギュラー", "strings": [28, 33, 38, 43], "frets": 24 },
+  "tuning":  { "name": "5弦 レギュラー (B E A D G)", "strings": [23, 28, 33, 38, 43], "frets": 24 },
   "fingering": { "preferred_position": 3, "weights": {…} },
-  "tempo":   { "bpm": null, "beats_per_bar": 4, "beat_unit": 4, "offset_sec": 0.0 },
+  "tempo":   { "bpm": 103.0, "beats_per_bar": 4, "beat_unit": 4, "offset_sec": 1.805,
+               "source": "auto|manual|null", "stable": true, "confidence": 0.54 },
+  "tempo_estimate": { "bpm": …, "offset_sec": …, "drift_ms": 7.5, "grid_fit": 0.71, … },
   "quantize":{ "display": false, "export": false, "grid": "1/16" },
+  "score":   { "grid": "1/16", "triplets": "auto", "rest_min": "1/8", "key": "auto", "staves": "both", "scale": 1.0 },
   "confidence_threshold": 0.5
 }
 ```
 
-- `tuning.strings` は **低い弦から順** の開放弦 MIDI 番号。
+- `tuning.strings` は **低い弦から順** の開放弦 MIDI 番号。新規プロジェクトの既定は **5 弦レギュラー（B0 E1 A1 D2 G2）**（v1.3）。
+- `tempo.bpm` は `beat_unit` の音符が 1 分間にいくつか。`offset_sec` は 1 小節目 1 拍目の時刻。`source = auto` は自動推定（再採譜のたびに更新）、`manual` は手入力（自動推定で上書きしない）。
 - ベース音量は 0 dB 固定のため `gains_db` に `bass` を持たない。
 
 ### 3.3 音符（note）
@@ -150,7 +154,7 @@ workspace/projects/<project_id>/
 | `fret` | int\|null | フレット番号。0 = 開放 |
 | `technique` | string\|null | `slide` / `hammer` / `pull` / `ghost` / `mute` 等（手入力。自動推定しない） |
 | `fingering_edited` | bool | 弦・フレットを手修正したか（最適化時にロックされる） |
-| `flags` | string[] | `octave_fixed` / `low_confidence` / `out_of_range` / `pitch_disagree` / `poly` など（任意） |
+| `flags` | string[] | `octave_fixed` / `low_confidence` / `out_of_range` / `pitch_disagree` / `poly` など（任意）。譜面用に `dur_fixed`（音価を手で決めた＝休符を詰めない）、`triplet` / `straight`（その拍を 3 連 / 通常の格子に固定） |
 
 `notes.json` は `{ "schema_version": 1, "notes": [...], "suppressed": [...] }`。`suppressed` は **ユーザーが削除した自動音符の痕跡**（開始・音高）で、再解析時に同じ音符を復活させないために使う。
 
@@ -162,6 +166,8 @@ workspace/projects/<project_id>/
 | 時刻変更（ドラッグ, インスペクタ） | `start_sec` / `end_sec` | `edited = true` |
 | 弦・フレット変更（Alt+↑↓, TAB ドラッグ, インスペクタ） | `string` / `fret`（**音高は不変**。候補以外は選べない） | `fingering_edited = true` |
 | 追加・削除・分割・結合 | 音符の集合 | 追加は `source = manual, edited = true` |
+| 音価変更（譜面の音価ボタン、テンキー +−、`.`、`/`） | `start_sec` を格子に合わせ、`end_sec` = 開始 + 音価（次の音符の開始で打ち切り） | `edited = true`、`dur_fixed`、3 連は `triplet` / `straight` |
+| フレット入力（譜面で数字キー） | 選んだ弦の `fret` と `midi_pitch`。休符の上なら休符の長さの音符を追加 | `edited = true`, `fingering_edited = true` |
 
 ---
 
@@ -221,7 +227,7 @@ workspace/projects/<project_id>/
   - `fingering_edited` の音符は割当を固定（候補を1つに制限）。
 - **局所再選択**：音高編集時はその音符だけを前後の音符から最小コストで選び直す（全体が勝手に変わらないように）。全体の再最適化はボタンで明示的に実行。
 - **チューニング変更**：候補を再計算。手修正された運指があれば「手修正を破棄して再計算／新チューニングで成立する手修正は残す／キャンセル」を確認する。
-- プリセット：4弦レギュラー E1-A1-D2-G2、5弦 B0-E1-A1-D2-G2、4弦半音下げ、4弦ドロップD、6弦 B0-…-C3、カスタム（開放弦を音名で入力、フレット数 12–30）。
+- プリセット：5弦 B0-E1-A1-D2-G2（既定）、4弦レギュラー E1-A1-D2-G2、4弦半音下げ、4弦ドロップD、4弦全音下げ、5弦ハイC、6弦 B0-…-C3、カスタム（開放弦を音名で入力、フレット数 12–30）。既存のプロジェクトは保存済みのチューニングのまま（設定で変更）。
 
 ### 4.5 量子化（`quantize`）
 
@@ -236,6 +242,31 @@ workspace/projects/<project_id>/
 | MIDI | SMF Type 1、1トラック、Program 33（Electric Bass finger）。テンポ未設定時は 120 BPM を仮置きし、秒→tick を厳密換算（時刻はずれない）。オプションで弦ごとに ch1〜chN に振り分け（Guitar Pro 系での弦情報取り込み用） |
 | CSV | `id,start_sec,end_sec,duration_sec,midi_pitch,note_name,confidence,source,edited,string,fret,technique,fingering_edited`（量子化時は `q_start_sec,q_end_sec` を追加） |
 | PDF | A4 横。見出しに曲名・チューニング・「推定TAB（自動採譜・要確認）」。テンポ設定時は小節割り（1段4小節）、未設定時は秒割り（1段8秒）。低信頼の音は `(5)` のように括弧付き |
+| Guitar Pro（.gp） | Guitar Pro 7 / 8 形式（v1.3）。譜面ビューと同じ当てはめ（4.8）で、1 トラック（Bass / el.bs.、Program 33）、チューニング・弦数、テンポ、拍子、調号、音価・付点・3 連・タイ・休符、奏法（h/p はその前の音から、スライド、ゴースト、デッド、ビブラート、ベンド）を書く。ブラウザ側で alphaTab の `Gp7Exporter` により生成し、サーバーには送らない |
+
+### 4.7 テンポ・1 小節目の推定（`tempo`、v1.3）
+
+譜面にはテンポの格子が要るため、採譜の最後（運指の後）に推定し、`tempo.source` が未設定か `auto` のときだけ `tempo` に書く（手入力は上書きしない）。失敗しても採譜ジョブは成功扱い（`tempo_estimate.error` に理由）。画面の「テンポを自動推定」（`POST /tempo/estimate`）でも実行できる。
+
+1. ドラムのステムの onset 強度＋ベースのステムの低域 onset 強度（ステムが無ければ mix）で librosa の拍追跡。
+2. 検出した拍に整数の拍番号を振り（抜けた拍も数える）、外れ値を除いた直線当てはめで周期と位相を得る。平滑化した onset 強度を格子上で合計する格子探索（周期 ±0.4 %→±0.04 %、位相 ±0.3 拍→±0.03 拍）で詰める。
+3. 1 小節目（ダウンビート）：各拍について「前の 1 小節と後の 1 小節のベースの音名分布の違い（和声の変わり目）」×2 ＋ ベース音の有無・ベース／キックのアタック強度を拍子の位相ごとに平均し、最大の位相を 1 拍目とする（曲頭の音の位相に小さな加点）。
+4. 音符の開始時刻に合わせた最終補正：16 分の格子に近い音符の残差に直線を当て、位相と周期を直す（onset 強度のピークは 1 フレームほど遅れるため）。
+5. 20 秒ごとの残差の中央値の最大値を `drift_ms` とし、16 分音符の 20 %（最低 25 ms）以内なら `stable`。一定でない曲は画面で注意する。
+
+合成曲（78.5〜140 BPM、曲頭の空白 0〜2.3 秒）で BPM 誤差 0.01 未満、小節線の誤差 2 ms 未満。実曲 2 曲で `drift_ms` 7.5 / 9.4 ms。
+
+### 4.8 譜面化：音符（秒）→ 小節・音価（`web/js/notes/score.js`、v1.3）
+
+保存データは秒のまま。表示と Guitar Pro 書出しのときに当てはめる（PPQ 960）。
+
+1. **拍ごとの格子**：拍内の onset の誤差を 16 分格子（`score.grid`、既定 1/16）と 8 分 3 連格子で比べ、3 連の誤差が半分未満かつ 16 分格子の 20 % 以上小さい拍だけ 3 連にする（`score.triplets = off` で無効、音符の `triplet` / `straight` フラグで固定）。
+2. **開始**：その拍の格子に丸める。同じ位置・同じ弦に 2 音が来た場合、後の音が 0.35 格子以上遅ければ次の格子へ送り（速い連打）、そうでなければ信頼度の高い方だけを表示（件数を表示）。別の弦なら和音。
+3. **終了**：終了位置の拍の格子に丸め、最短 1 格子。次の音の開始で打ち切る（単音）。次の音までの隙間が `score.rest_min`（既定 8 分）未満なら直前の音を伸ばして埋める（ベースは音をつなげて読むため。`dur_fixed` の音符は除く）。
+4. **小節**：曲の先頭（0 秒）を含む小節を 1 小節目とする（それより前に音があればその小節から）。ルーラーの小節番号も同じ。
+5. **音価への分解**：小節線と 3 連の拍の境目で切ってタイでつなぐ。通常の区間は大きい音価から、音符は「音価の半分の位置から始められる」（シンコペーション可）、休符は「音価の位置にそろい、拍をまたがない」規則で分解（付点・全休符は条件付き）。3 連の拍の中は 3 連の音価（8 分 3 連、4 分 3 連など）で分解。
+6. **調号**：音符の長さで重みを付けた音名分布と Krumhansl-Kessler の長調・短調プロファイルの相関が最大の調（`score.key` で固定可）。
+7. 描画：alphaTab（MPL-2.0、`web/js/vendor/alphatab` に同梱）でページ表示。ベースは実音の 1 オクターブ上に記譜（ヘ音記号、`displayTranspositionPitch = −12`）。alphaTab の再生機能は使わず、カーソルは再生エンジンの位置から描く。
 
 ---
 
@@ -303,6 +334,13 @@ workspace/projects/<project_id>/
 - TAB 操作：クリック＝選択（ピアノロールと共有）、上下ドラッグ／Alt+↑↓＝同じ音高のまま弦変更。
 - 低信頼の音符はオレンジ系＋斜線、手修正済みは白枠、運指ロックは TAB 上で下線。
 - 保存：Ctrl+S。未保存で離れようとすると警告。
+- **譜面ビュー（v1.3）**：ルーラー左の「タイムライン / 譜面」（V キー）で、ピアノロールと推定 TAB の代わりに五線＋TAB（Guitar Pro 風のページ表示）を出す。ステム行は縮小表示にできる。
+  - 左欄：テンポ表示（自動 / 手入力、一定でない可能性の注意）、テンポを自動推定、÷2 / ×2 / ◀1拍 / 1拍▶、表示（五線＋TAB / TAB（リズム付き）/ 五線のみ）、調号、最小音価、3 連符、休符、拡大、Guitar Pro 書出し。
+  - 上の帯：音価ボタン（全〜32 分、付点、3 連）、位置の前後移動、キー操作の説明。選んだ音符の音価が点灯する。
+  - カーソル：再生中の拍を黄色、小節を薄い青、正確な位置を赤線で示し、「追従」ON なら段が変わるとスクロールする。
+  - クリック：音符＝選択（他のビューと共有）＋試聴。TAB の線の上＝その弦を入力位置にする（休符の上でも可）。
+  - キー：数字＝フレット入力（素早く 2 桁で 10 以上）、←→＝拍、↑↓＝入力する弦、テンキー +−＝音価を短く / 長く、`.`＝付点、`/`＝3 連、Shift+↑↓＝半音、Ctrl+↑↓＝オクターブ、Shift+←→＝1 格子移動。
+  - 低信頼はオレンジ、手入力は青。インスペクタにも小節・拍・音価と音価ボタンを出す。
 
 ---
 
@@ -322,7 +360,8 @@ workspace/projects/<project_id>/
 | GET | `/api/jobs/{job_id}` | 状態・進捗・エラー |
 | POST | `/api/jobs/{job_id}/cancel`, `/retry` | 中断・再試行 |
 | POST | `/api/fingering/optimize` | 運指の全体最適化（ロック尊重） |
-| GET | `/api/projects/{id}/export/{midi|csv|pdf}` | 書出し |
+| GET | `/api/projects/{id}/export/{midi|csv|pdf}` | 書出し（Guitar Pro はブラウザ側で生成） |
+| POST | `/api/projects/{id}/tempo/estimate` | テンポ・1 小節目の推定（`apply` で `tempo` に反映。数秒） |
 
 ---
 

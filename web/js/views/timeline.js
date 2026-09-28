@@ -193,7 +193,7 @@ export class RulerView extends CanvasView {
         if (x < -40 || k % every) continue;
         ctx.fillStyle = cssVar('--text-dim');
         ctx.fillRect(Math.round(x), h - 10, 1, 10);
-        ctx.fillText(String(k + 1), x + 3, h - 12);
+        ctx.fillText(String(this.app.barNumber ? this.app.barNumber(k) : k + 1), x + 3, h - 12);
       }
     }
     const step = tickStep(v.pps, 80);

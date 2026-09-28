@@ -154,10 +154,18 @@ def stage_transcribe(root: Path, params: dict) -> dict:
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
     os.replace(tmp, path)
+    progress("transcribe", 0.96, "テンポ・小節線を推定中")
+    tempo_est = None
+    try:
+        from . import tempo
+
+        tempo_est = tempo.estimate_for_project(root, meta, notes)
+    except Exception as e:  # noqa: BLE001 - the score can still be set up by hand
+        tempo_est = {"error": f"{type(e).__name__}: {e}"}
     info["peak_rss_mb"] = peak_memory_mb()
     info["created_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
     info["auto_notes"] = str(path.relative_to(root)).replace("\\", "/")
-    return {"transcription": info}
+    return {"transcription": info, "tempo_estimate": tempo_est}
 
 
 def _swap_dir(tmp_dir: Path, final_dir: Path) -> None:

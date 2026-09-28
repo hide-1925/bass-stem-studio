@@ -50,6 +50,7 @@ export const api = {
   cancelJob: (jobId) => request('POST', `/api/jobs/${jobId}/cancel`),
   retryJob: (jobId) => request('POST', `/api/jobs/${jobId}/retry`),
   presets: () => request('GET', '/api/fingering/presets'),
+  estimateTempo: (id, body = {}) => request('POST', `/api/projects/${id}/tempo/estimate`, body),
   optimize: (notes, tuning, options, respectLocks = true) =>
     request('POST', '/api/fingering/optimize', { notes, tuning, options, respect_locks: respectLocks }),
   exportUrl: (id, fmt, params = {}) => {

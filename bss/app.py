@@ -59,6 +59,7 @@ def apply_stage_result(job: Job, stage: str, result: dict) -> None:
         store.update_server_fields(pid, separation=result["separation"])
     elif stage == "transcribe":
         _merge_transcription(pid, result["transcription"])
+        _apply_tempo_estimate(pid, result.get("tempo_estimate"))
 
 
 def _merge_transcription(project_id: str, info: dict) -> None:
@@ -80,6 +81,24 @@ def _merge_transcription(project_id: str, info: dict) -> None:
         if old_notes:
             store.push_undo(project_id, {"label": "再解析", "time": now_iso(), "changes": changes})
         store.update_server_fields(project_id, transcription={**info, "merge": stats})
+
+
+TEMPO_KEYS = ("bpm", "beats_per_bar", "beat_unit", "offset_sec", "source", "stable", "confidence")
+
+
+def _apply_tempo_estimate(project_id: str, est: dict | None, force: bool = False) -> dict:
+    """Store the estimate; use it as the tempo unless the user set the tempo by hand."""
+    if not est:
+        return store.load(project_id)
+    if est.get("error"):
+        diag.event("tempo_estimate_failed", level="warn", project=project_id, error=est["error"])
+        return store.update_server_fields(project_id, tempo_estimate=est)
+    meta = store.load(project_id)
+    tempo = meta.get("tempo") or {}
+    fields = {"tempo_estimate": est}
+    if force or not tempo.get("bpm") or tempo.get("source") == "auto":
+        fields["tempo"] = {k: est[k] for k in TEMPO_KEYS if k in est}
+    return store.update_server_fields(project_id, **fields)
 
 
 def on_job_finish(job: Job) -> None:
@@ -307,6 +326,25 @@ def put_notes(project_id: str, body: dict = Body(...)):
     except (KeyError, ValueError, TypeError) as e:
         raise HTTPException(400, f"音符データが不正です: {e}")
     return {"revision": data["revision"], "saved_at": data["saved_at"]}
+
+
+@app.post("/api/projects/{project_id}/tempo/estimate")
+def estimate_tempo(project_id: str, body: dict = Body(default={})):
+    """Estimate BPM / downbeat from the stems (a few seconds). ``apply`` writes it as the tempo."""
+    from . import tempo
+
+    meta = _meta_or_404(project_id)
+    notes = store.load_notes(project_id)["notes"]
+    bpb = body.get("beats_per_bar")
+    try:
+        est = tempo.estimate_for_project(store.paths(project_id).root, meta, notes,
+                                         beats_per_bar=int(bpb) if bpb else None)
+    except (ValueError, FileNotFoundError) as e:
+        raise HTTPException(400, str(e))
+    diag.event("tempo_estimate", project=project_id, bpm=est["bpm"], stable=est["stable"],
+               elapsed_sec=est.get("elapsed_sec"))
+    meta = _apply_tempo_estimate(project_id, est, force=True) if body.get("apply", True) else         store.update_server_fields(project_id, tempo_estimate=est)
+    return {"estimate": est, "project": meta}
 
 
 # ---------------------------------------------------------------------------------------------

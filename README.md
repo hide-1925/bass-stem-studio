@@ -15,8 +15,9 @@
 - 🔊 **再生音量**（リミッターの後段なので音割れ防止に影響しない）
 - 🩺 **診断**：動作チェック、ファイル診断（開けない理由を表示）、エラーログ（サーバー・ブラウザ）、ジョブ履歴、診断レポート（ZIP）
 - 🎼 **ベース採譜**：Basic Pitch＋pYIN＋onset 検出でピアノロール化。低信頼の音をオレンジで強調
-- 🎸 **推定TAB**：4 弦 / 5 弦 / 半音下げ / カスタムのチューニングで、弦・フレットを曲全体で最適化
-- ✏️ 音高・時刻・弦フレットを修正（取り消し・やり直し付き）→ **MIDI / CSV / TAB 印刷用 PDF** に書き出し
+- 🎸 **推定TAB**：5 弦レギュラー（既定）/ 4 弦 / 半音下げ / カスタムのチューニングで、弦・フレットを曲全体で最適化
+- 🎼 **譜面（Guitar Pro 風）**：五線＋TAB を小節・音価付きで表示（[alphaTab](https://alphatab.net/) で描画）。テンポと1小節目の位置は自動推定、3連符も自動判定。再生位置に合わせてカーソルが進み、数字キーでフレット入力・音価（付点・3連）の変更ができる
+- ✏️ 音高・時刻・弦フレット・音価を修正（取り消し・やり直し付き）→ **Guitar Pro（.gp）/ MIDI / CSV / TAB 印刷用 PDF** に書き出し
 - 🌐 **YouTube などブラウザで再生中の曲** を「タブの音を録音」で取り込み可能（Chrome / Edge）
 - 🔒 すべてこの PC 内で処理（外部送信なし。初回のモデル取得のみネットに接続）
 
@@ -47,7 +48,26 @@ Demucs のモデル（約 110 MB）は初回の分離時に自動でダウンロ
 2. 各ステムの **M**（ミュート）/ **S**（ソロ）/ 音量で聞きたいパートを強調。
 3. 波形をドラッグして **A/B ループ**、速度を落として練習。
 4. ピアノロール / TAB の音符を **クリックするとその位置から再生**。誤りは下のキーで修正して **保存（Ctrl+S）**。
-5. **書き出し** から MIDI / CSV / PDF。テンポ（BPM・拍子・1 小節目の位置）を設定すると小節割りの PDF や量子化も使えます。
+5. 左上の **タイムライン / 譜面** で表示を切り替え（V キー）。譜面では五線＋TAB を小節ごとに読めます（下記）。
+6. **書き出し** から Guitar Pro（.gp）/ MIDI / CSV / PDF。
+
+### 譜面（五線＋TAB）
+
+- テンポ（BPM）と1小節目の位置は、採譜のあとにドラムとベースのステムから自動で推定します（以前に採譜した曲は「テンポを自動推定」を押す）。
+  ずれていたら **÷2 / ×2**（BPM の倍・半分）と **◀1拍 / 1拍▶**（小節線をずらす）で直すか、設定で手入力します。
+- 音符は秒のまま保存し、表示と書き出しのときにテンポの格子へ当てはめます（最小音価・3連符の自動判定・短い休符を詰める長さは左の欄で変更）。
+- 低信頼の音はオレンジ、手入力した音は青で表示します。**Guitar Pro (.gp)** は Guitar Pro 7 / 8 で開けます（Guitar Pro 5 / 6 では開けません）。
+
+| 譜面での操作 | キー |
+|---|---|
+| 音符を選ぶ / 入力位置（拍と弦）を選ぶ | クリック（TAB の線の上をクリックするとその弦） |
+| 前 / 次の拍へ | ← / → |
+| 入力する弦を上 / 下へ | ↑ / ↓ |
+| フレットを入力（休符の上なら音符を追加） | 数字キー（1 → 2 と素早く打つと 12） |
+| 音価を短く / 長く | テンキー + / − （または上の音価ボタン） |
+| 付点 / 3連符 | . / / |
+| 半音上げ下げ / オクターブ | Shift+↑↓ / Ctrl+↑↓ |
+| 位置を1グリッド前後へ | Shift+← / → |
 
 | 操作 | キー |
 |---|---|
@@ -62,6 +82,7 @@ Demucs のモデル（約 110 MB）は初回の分離時に自動でダウンロ
 | 取り消し / やり直し | Ctrl+Z / Ctrl+Y |
 | 保存 | Ctrl+S |
 | EQ / コンプの表示・非表示 | E（ステムの **FX** ボタンでそのステムを直接開く） |
+| タイムライン / 譜面の切り替え | V |
 | 拡大縮小 / 横スクロール | Ctrl+ホイール / ホイール（ピアノロールの音域は Shift+ホイール） |
 
 ## うまくいかないとき（診断）
@@ -100,12 +121,15 @@ bss/                 Python（FastAPI サーバーと解析）
   separation/        音源分離（Demucs）… Separator を実装して REGISTRY に登録すれば交換可能
   transcription/     ピッチ検出（basic_pitch / pyin / fused）… Transcriber を実装して登録
   fingering/         チューニング・候補列挙・運指の全体最適化（Viterbi）
+  tempo.py           テンポ・1小節目（ダウンビート）の推定
   export/            MIDI / CSV / PDF
   worker.py, jobs.py 重い処理を子プロセスで実行（進捗・中断・再試行）
 web/                 フロントエンド（ビルド不要の ES Modules + Canvas + Web Audio）
   js/audio/engine.js 12ch 伸縮ノード（Signalsmith Stretch）＋ミキサー＋リミッター
   js/audio/fx.js     EQ / フィルター / コンプのチェーン（ステムごと＋マスター）
   js/views/fxpanel.js FX ラックの画面（スペクトル・EQ カーブ・伝達カーブ・エンベロープ）
+  js/notes/score.js  音符（秒）→ 小節・音価（3連・タイ・休符）への当てはめ、調号の推定
+  js/views/score.js  譜面ビュー（alphaTab で描画、カーソル・編集・Guitar Pro 書き出し）
 tools/               合成試験データ生成・精度評価・ベンチマーク
 tests/               pytest
 docs/SPEC.md         開発仕様書
@@ -115,7 +139,7 @@ docs/MEASUREMENTS.md 実測値と残る誤認識例
 ## テスト・計測
 
 ```bat
-.venv\Scripts\python -m pytest -q                              :: テスト（35 件。API は一時フォルダで実行）
+.venv\Scripts\python -m pytest -q                              :: テスト（45 件。API は一時フォルダで実行）
 .venv\Scripts\python tools\make_testset.py                     :: 正解付き合成曲を生成
 .venv\Scripts\python tools\evaluate.py --testsets              :: ベース単独 / ミックスの採譜精度
 .venv\Scripts\python tools\evaluate.py --audio bass.wav --reference ref.csv   :: 手持ちの正解データで評価
@@ -128,11 +152,14 @@ docs/MEASUREMENTS.md 実測値と残る誤認識例
 
 - 分離品質は曲次第です。htdemucs_6s のピアノ分離は公式にも品質の留保があり、ギター / ピアノ / その他は混ざることがあります。
 - 採譜は単音主体のベースラインを「手直しできる水準」にすることが目標で、ベンド・スライド・ゴースト・和音・極端な低音は保証外です。TAB は推定です。
+- 譜面のテンポは曲全体で一定として扱います。ライブ録音などテンポが揺れる曲では、後半で小節線がずれることがあります（画面に注意を表示）。
+- 譜面の音価は自動の当てはめです。同じ弦・同じ拍位置に重なった音は1つだけ表示し、弦の決まらない音（音域外）は譜面と .gp に入りません（件数を表示）。
 - 合成曲での精度は上限の目安です（[docs/MEASUREMENTS.md](docs/MEASUREMENTS.md)）。
 - ブラウザはステム全体を保持するため、3 分の曲で約 370 MB を使います。
 
 ## 利用しているソフトウェア
 
 [Demucs](https://github.com/facebookresearch/demucs)（MIT）/ [Basic Pitch](https://github.com/spotify/basic-pitch)（Apache-2.0）/
-[Signalsmith Stretch](https://signalsmith-audio.co.uk/code/stretch/)（MIT、`web/js/vendor` に同梱）/ [librosa](https://librosa.org/)（ISC）/
+[Signalsmith Stretch](https://signalsmith-audio.co.uk/code/stretch/)（MIT、`web/js/vendor` に同梱）/
+[alphaTab](https://alphatab.net/)（MPL-2.0、`web/js/vendor/alphatab` に無改変で同梱）と Bravura フォント（SIL OFL 1.1）/ [librosa](https://librosa.org/)（ISC）/
 PyTorch / FastAPI / PyAV（FFmpeg）/ soundfile / mido / reportlab ほか。
