@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bass Stem Studio</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f766e'/%3E%3Cpath d='M7 22V10m6 14V8m6 12v-8m6 10V14' stroke='%23e6fffa' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Bass Stem Studio</div>
+    <button id="btn-projects" title="保存済みプロジェクトを開く">プロジェクト</button>
+    <label class="btn primary" title="WAV / MP3 / FLAC / M4A">
+      ファイルを開く<input id="file-input" type="file" accept=".wav,.mp3,.flac,.m4a,.aac,.ogg,.opus,.webm,.aif,.aiff,audio/*" hidden>
+    </label>
+    <button id="btn-capture" title="YouTube などを再生中のブラウザタブの音を録音して取り込む">タブの音を録音</button>
+    <div class="title-wrap"><span id="project-title" class="project-title">プロジェクト未選択</span><span id="dirty" class="dirty" hidden>● 未保存</span></div>
+    <button id="btn-save" title="Ctrl+S" disabled>保存</button>
+    <div class="menu">
+      <button id="btn-export" disabled>書き出し ▾</button>
+      <div class="menu-list" id="export-menu" hidden>
+        <button data-export="midi">MIDI</button>
+        <button data-export="midi-strings">MIDI（弦ごとにチャンネル）</button>
+        <button data-export="csv">音符 CSV</button>
+        <button data-export="pdf">TAB 印刷用 PDF</button>
+      </div>
+    </div>
+    <button id="btn-settings" disabled>設定</button>
+    <button id="btn-diag" title="動作チェック・ファイル診断・エラーログ・診断レポート">診断</button>
+  </header>
+
+  <section class="transport">
+    <button id="btn-play" class="play" title="Space" disabled>▶</button>
+    <button id="btn-stop" title="先頭（ループ中は A）へ" disabled>■</button>
+    <div class="time"><span id="time-pos">0:00.000</span><span class="sep">/</span><span id="time-dur">0:00.000</span></div>
+    <label class="ctl">速度
+      <select id="speed" disabled></select>
+    </label>
+    <div class="ctl loop">
+      <button id="btn-a" title="A = 現在位置 (A キー)" disabled>A</button>
+      <button id="btn-b" title="B = 現在位置 (B キー)" disabled>B</button>
+      <button id="btn-loop" class="tog" title="ループ (L キー)" disabled>ループ</button>
+      <span id="loop-range" class="mono dim">–</span>
+    </div>
+    <label class="ctl chk"><input id="chk-follow" type="checkbox" checked> 追従</label>
+    <label class="ctl chk"><input id="chk-click-play" type="checkbox" checked> クリックで試聴</label>
+    <div class="ctl zoom">
+      <button id="btn-zoom-out" title="縮小 (-)">−</button>
+      <button id="btn-zoom-fit" title="全体表示">全体</button>
+      <button id="btn-zoom-in" title="拡大 (+)">＋</button>
+    </div>
+    <div class="ctl vol" title="再生音量（リミッターの後段。音割れ防止には影響しません）">
+      <span class="vol-label">音量</span>
+      <button id="btn-mute" class="icon" title="ミュート">🔊</button>
+      <input id="volume" type="range" min="0" max="100" step="1" value="100">
+      <span id="vol-text" class="mono dim">0 dB</span>
+    </div>
+    <button id="btn-fx" class="fx-btn" title="EQ / フィルター / コンプ（E キー）" disabled><span class="lamp" id="fx-lamp"></span>EQ / コンプ</button>
+    <div class="peak" id="peak-indicator" title="音割れ防止のピーク制御">
+      <span class="lamp" id="limiter-lamp"></span>
+      <span id="peak-text">ピーク制御: 待機</span>
+    </div>
+  </section>
+
+  <section class="overview-row"><canvas id="overview"></canvas></section>
+
+  <div class="workspace">
+    <main class="tracks" id="tracks">
+      <div class="row ruler-row">
+        <div class="head">時間 / 小節</div>
+        <canvas id="ruler"></canvas>
+      </div>
+      <div id="stem-rows"></div>
+      <div class="row roll-row">
+        <div class="head roll-head">
+          <div class="head-title">ピアノロール <span class="dim">（ベース）</span></div>
+          <div class="legend"><span class="sw bass"></span>通常 <span class="sw low"></span>低信頼 <span class="sw edited"></span>手修正</div>
+          <canvas id="roll-keys" class="keys-canvas"></canvas>
+        </div>
+        <canvas id="roll"></canvas>
+      </div>
+      <div class="row tab-row">
+        <div class="head tab-head">
+          <div class="head-title">推定TAB</div>
+          <div class="dim small" id="tuning-label"></div>
+          <button id="btn-reopt" class="small" title="手修正（ロック）を保ったまま全体の運指を再計算" disabled>運指を再最適化</button>
+          <canvas id="tab-labels" class="labels-canvas"></canvas>
+        </div>
+        <canvas id="tab"></canvas>
+      </div>
+      <div class="empty" id="empty-state">
+        <h2>曲を読み込んで始めましょう</h2>
+        <p>「ファイルを開く」で WAV / MP3 / FLAC / M4A を選ぶか、ここにドラッグ＆ドロップ。<br>
+          YouTube などブラウザで再生中の曲は「タブの音を録音」で取り込めます。</p>
+        <p class="dim small">曲はこの PC の中だけで処理されます（外部送信なし）。個人の練習用途でご利用ください。</p>
+      </div>
+    </main>
+    <aside class="inspector" id="inspector"></aside>
+  </div>
+
+  <section class="fx" id="fx" hidden></section>
+
+  <footer class="statusbar" id="statusbar">
+    <div class="job" id="job" hidden>
+      <span id="job-stage" class="stage"></span>
+      <div class="bar"><div id="job-bar"></div></div>
+      <span id="job-msg" class="msg"></span>
+      <span id="job-time" class="mono dim"></span>
+      <button id="job-cancel" class="small">中断</button>
+      <button id="job-retry" class="small" hidden>再試行</button>
+      <button id="job-detail" class="small" hidden>詳細</button>
+      <button id="job-diag" class="small" hidden>診断</button>
+    </div>
+    <div class="status-msg" id="status-msg"></div>
+  </footer>
+
+  <div class="loading" id="loading" hidden><div class="box"><div class="spinner"></div><div id="loading-text">読み込み中…</div></div></div>
+  <div class="modal-back" id="modal-back" hidden><div class="modal" id="modal"></div></div>
+  <div class="drop-hint" id="drop-hint" hidden>ここにドロップして読み込み</div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

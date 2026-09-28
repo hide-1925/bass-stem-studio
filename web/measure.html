@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>Bass Stem Studio – 同期・音割れ計測</title>
+  <link rel="stylesheet" href="css/app.css">
+  <style>
+    body { overflow: auto; padding: 16px; display: block; }
+    table { border-collapse: collapse; margin: 10px 0; }
+    td, th { border: 1px solid var(--border); padding: 4px 10px; text-align: right; font-family: ui-monospace, Consolas, monospace; }
+    th { background: var(--panel-2); }
+    .ok { color: #68d391; } .ng { color: var(--danger); }
+    pre { background: var(--panel); padding: 8px; border: 1px solid var(--border); max-height: 300px; overflow: auto; }
+  </style>
+</head>
+<body>
+  <h2>同期・音割れ計測</h2>
+  <p class="dim">6 ステムの同じ位置（1.0 秒から 0.75 秒おき）に短いクリックを置いた合成ステムを、アプリと同じ再生エンジンで再生し、
+    出力で検出したクリックの時刻を「画面に表示される再生位置」と比較します。スピーカーから音が出ます（小さめの音量にしてください）。</p>
+  <button id="run" class="primary">計測開始</button>
+  <span id="state" class="dim"></span>
+  <div id="out"></div>
+  <script type="module" src="js/measure.js"></script>
+</body>
+</html>

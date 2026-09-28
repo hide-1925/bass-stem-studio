@@ -1,0 +1,34 @@
+# environment
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# user data: songs, stems, projects, evaluation outputs (never commit third-party audio)
+workspace/
+
+# local scratch
+.scratch/
+*.log
+
+# Local audit inputs / work (never commit)
+.audit-private-terms.txt
+.audit-work/
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+credentials*.json
+secrets*.json
+
+# Generated private outputs (diagnostic reports contain file names, paths and logs)
+bss-diagnostics-*.zip
+*.bundle
+*.tmp
