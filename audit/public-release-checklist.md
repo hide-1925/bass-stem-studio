@@ -1,6 +1,6 @@
 # Public Release Gate
 
-2026-09-29、履歴の書き換えの dry-run まで。`[x]` は確認済み、`[ ]` は未了（理由を併記）。
+2026-09-29、リポジトリの作り直しと clone し直しての検証のあと。`[x]` は確認済み、`[ ]` は未了（理由を併記）。
 
 ## Critical gate
 
@@ -10,10 +10,10 @@
 
 ## Privacy gate
 
-- [ ] 対象の個人メール 0件 … dry-run では 0件。**書き換えの push は承認待ち**
-- [ ] 対象の実名メタデータ 0件 … 同上
+- [x] 対象の個人メール 0件（clone し直して確認）
+- [x] 対象の実名メタデータ 0件
 - [x] Claude Code session URL 0件（commit message・ファイルとも）
-- [ ] private term 0件 … 現行ツリーは 0件。履歴は書き換えの push 待ち
+- [x] private term 0件（作業ツリー・履歴・メタデータ）
 - [x] 誤って入った文字起こし・診断・曲 0件（`workspace/` は一度も追跡されていない）
 
 ## Git gate
@@ -23,7 +23,7 @@
 - [x] 全 tag を監査（なし）
 - [x] commit メタデータを監査
 - [x] commit message を監査
-- [ ] 旧い sensitive な object に到達できない … push の方法（案 A / B）の決定待ち
+- [x] 旧い sensitive な object に到達できない（作り直し。旧 SHA は not found）
 - [x] force push の対象一覧を明示（`history-audit.md` §3・§4）
 
 ## GitHub metadata gate
@@ -44,4 +44,4 @@
 ## Quality gate
 
 - [x] 試験 40 件通過（security の回帰試験 5 件を含む）
-- [ ] LICENSE … owner の決定待ち（`license-decision.md`）
+- [x] LICENSE … owner の判断で付けない（Private 運用。公開時に再検討）
