@@ -95,6 +95,18 @@ def test_presets_are_valid(preset):
     assert t.labels()[0]  # names from string 1
 
 
+def test_slide_stays_on_one_string_and_avoids_open_strings():
+    # G2 slides down to A1 (the case from a real song): without the technique the optimizer would
+    # take the open A string; a slide needs both notes on one string and no open string
+    notes = seq([43, 33])
+    free = optimize(notes, STD4)["assignments"]
+    assert free[notes[1]["id"]][1] == 0  # plain notes: open A
+    notes[1]["technique"] = "slide_shift"
+    a = optimize(notes, STD4)["assignments"]
+    (s1, f1), (s2, f2) = a[notes[0]["id"]], a[notes[1]["id"]]
+    assert s1 == s2 and f1 > 0 and f2 > 0 and f1 - f2 == 10
+
+
 def test_five_string_keeps_string_numbers():
     five = tuning_from_dict(next(p for p in PRESETS if p["strings"] == [23, 28, 33, 38, 43]))  # B E A D G
     assert five.open_pitch(1) == 43 and five.open_pitch(4) == 28 and five.open_pitch(5) == 23

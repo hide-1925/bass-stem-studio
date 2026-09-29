@@ -28,7 +28,9 @@ FONT_CANDIDATES = [("C:/Windows/Fonts/BIZ-UDGothicR.ttc", 0), ("C:/Windows/Fonts
                    ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 0)]
 _font_ready = False
 
-TECH_MARK = {"slide": "/", "hammer": "h", "pull": "p", "ghost": "( )", "mute": "x", "bend": "b", "vibrato": "~"}
+TECH_MARK = {"slide": "sl.", "slide_shift": "sl.", "slide_in_below": "/", "slide_in_above": "\\",
+             "slide_out_down": "\\", "slide_out_up": "/", "hammer": "h", "pull": "p", "ghost": "( )", "mute": "x",
+             "bend": "b", "vibrato": "~"}
 GRAY = Color(0.55, 0.55, 0.55)
 LIGHT = Color(0.8, 0.8, 0.8)
 WARN = Color(0.75, 0.2, 0.1)

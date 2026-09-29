@@ -39,7 +39,10 @@ export class TabView extends CanvasView {
     ctx.font = `600 ${fs}px ui-monospace, Consolas, monospace`;
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'center';
+    let prev = null;
     for (const n of app.notes.sorted()) {
+      const before = prev;
+      prev = n;
       const d = app.displayTimes(n);
       if (d.e < v.t0 || d.s > v.t1) continue;
       const x = v.x(d.s);
@@ -79,7 +82,7 @@ export class TabView extends CanvasView {
       if (n.technique) {
         ctx.fillStyle = cssVar('--text-dim');
         ctx.font = `10px system-ui`;
-        ctx.fillText({ slide: '/', hammer: 'h', pull: 'p', ghost: '( )', mute: 'x', bend: 'b', vibrato: '~' }[n.technique] || n.technique, bx + tw / 2, y - fs / 2 - 7);
+        ctx.fillText(techMark(n, before), bx + tw / 2, y - fs / 2 - 7);
         ctx.font = `600 ${fs}px ui-monospace, Consolas, monospace`;
       }
     }
@@ -175,6 +178,20 @@ export class TabView extends CanvasView {
       this.dragVersion++;
     });
   }
+}
+
+const TECH_MARKS = {
+  hammer: 'h', pull: 'p', ghost: '( )', mute: 'x', bend: 'b', vibrato: '~',
+  slide_in_below: '↗', slide_in_above: '↘', slide_out_down: '↘', slide_out_up: '↗',
+};
+
+// Slides from the previous note point the way the pitch goes (/ up, \ down).
+function techMark(n, prev) {
+  if (n.technique === 'slide' || n.technique === 'slide_shift') {
+    const dir = prev && prev.midi_pitch > n.midi_pitch ? '\\' : '/';
+    return n.technique === 'slide_shift' ? `${dir}s` : dir;
+  }
+  return TECH_MARKS[n.technique] || n.technique;
 }
 
 function roundRect(ctx, x, y, w, h, r) {

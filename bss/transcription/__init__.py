@@ -17,7 +17,7 @@ from typing import Callable
 import numpy as np
 
 from ..notes import assign_ids
-from . import basic_pitch_tr, fused, pyin_tr
+from . import basic_pitch_tr, fused, pyin_tr, slides
 from .analysis import SR, BassAnalysis, analyze
 
 Progress = Callable[[float, str], None]
@@ -120,8 +120,12 @@ def transcribe(name: str, bass_mono_22k: np.ndarray, params: dict | None = None,
     an = analyze(bass_mono_22k, SR, progress=lambda f, m: progress(f * 0.6, m))
     tr = REGISTRY[name]()
     notes = tr.transcribe(an, params, progress)
+    slide_stats = None
+    sp = params.get("slides", True)  # False = off, True = defaults, dict = parameters
+    if sp is not False:
+        notes, slide_stats = slides.apply(an, notes, sp if isinstance(sp, dict) else None)
     notes = assign_ids(notes)
     info = {**tr.info(), "elapsed_sec": round(time.perf_counter() - t0, 2),
             "analysis_timings": {k: round(v, 2) for k, v in an.timings.items()},
-            "onsets": int(len(an.onset_times)), "notes": len(notes)}
+            "onsets": int(len(an.onset_times)), "notes": len(notes), "slides": slide_stats}
     return notes, info

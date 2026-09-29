@@ -199,7 +199,7 @@ export class ScoreView {
     };
     this.atBeats = [];
     this.atNotes = new Map();
-    const lastOnString = new Map();
+    let prevNotes = []; // notes of the previous sounding beat: [{n, note}]
     model.bars.forEach((b, i) => {
       const mb = new m.MasterBar();
       mb.timeSignatureNumerator = tm.bpb;
@@ -222,19 +222,21 @@ export class ScoreView {
           beat.tupletNumerator = 3;
           beat.tupletDenominator = 2;
         }
+        const cur = [];
         for (const n of mbeat.notes) {
           const note = new m.Note();
           note.string = nStr + 1 - n.string;
           note.fret = n.fret;
           if (mbeat.tieIn) note.isTieDestination = true;
-          else this._technique(m, note, n, lastOnString);
+          else this._technique(m, note, n, prevNotes);
           if (display && n.confidence < thr) style(note, lowColor);
           else if (display && n.source === 'manual') style(note, manualColor);
           beat.addNote(note);
           if (!this.atNotes.has(n.id)) this.atNotes.set(n.id, []);
           this.atNotes.get(n.id).push(note);
-          lastOnString.set(n.string, note);
+          cur.push({ n, note });
         }
+        prevNotes = cur; // a rest breaks legato: nothing slides across it
         voice.addBeat(beat);
         this.atBeats[bi] = beat;
       }
@@ -244,16 +246,34 @@ export class ScoreView {
   }
 
   // Our technique marks how a note is reached (h / p / slide from the previous note) or played.
-  _technique(m, note, n, lastOnString) {
-    const prev = lastOnString.get(n.string);
+  // Guitar Pro draws h/p and slides between two notes on the same string, so they attach to the
+  // directly preceding note only when it is on this string; otherwise a slide becomes a slide-in.
+  _technique(m, note, n, prevNotes) {
+    const prev = prevNotes.find((x) => x.n.string === n.string);
     switch (n.technique) {
       case 'hammer':
       case 'pull':
-        if (prev) prev.isHammerPullOrigin = true;
+        if (prev) prev.note.isHammerPullOrigin = true;
         break;
       case 'slide':
-        if (prev) prev.slideOutType = m.SlideOutType.Legato;
-        else note.slideInType = m.SlideInType.IntoFromBelow;
+      case 'slide_shift':
+        if (prev) prev.note.slideOutType = n.technique === 'slide' ? m.SlideOutType.Legato : m.SlideOutType.Shift;
+        else {
+          const from = prevNotes[0]?.n;
+          note.slideInType = from && from.midi_pitch > n.midi_pitch ? m.SlideInType.IntoFromAbove : m.SlideInType.IntoFromBelow;
+        }
+        break;
+      case 'slide_in_below':
+        note.slideInType = m.SlideInType.IntoFromBelow;
+        break;
+      case 'slide_in_above':
+        note.slideInType = m.SlideInType.IntoFromAbove;
+        break;
+      case 'slide_out_down':
+        note.slideOutType = m.SlideOutType.OutDown;
+        break;
+      case 'slide_out_up':
+        note.slideOutType = m.SlideOutType.OutUp;
         break;
       case 'ghost':
         note.isGhost = true;

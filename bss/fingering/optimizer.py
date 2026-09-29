@@ -69,9 +69,14 @@ def _node_cost(fret: int, o: FingeringOptions) -> float:
     return c
 
 
+SAME_STRING_TECHNIQUES = {"slide", "slide_shift", "hammer", "pull"}  # reached from the previous note on its string
+SLIDES = {"slide", "slide_shift"}
+TECHNIQUE_PENALTY = 4.0
+
+
 def _transition(prev: dict, cur: dict, pc: tuple[int, int], anchor: int | None, cc: tuple[int, int],
                 o: FingeringOptions) -> float:
-    ps, _pf = pc
+    ps, pf = pc
     cs, cf = cc
     simultaneous = abs(cur["start_sec"] - prev["start_sec"]) <= o.chord_window_sec
     if simultaneous and ps == cs:
@@ -83,7 +88,20 @@ def _transition(prev: dict, cur: dict, pc: tuple[int, int], anchor: int | None, 
         d = abs(cf - anchor)
         move = o.w_stretch * min(d, o.span) + o.w_shift * max(0, d - o.span)
     string_move = o.w_string * abs(cs - ps)
-    return relax * move + (0.3 + 0.7 * relax) * string_move
+    penalty = 0.0
+    tech = cur.get("technique")
+    if tech == "slide_out_down" and cf <= 2:
+        penalty += TECHNIQUE_PENALTY * 0.5  # no room to slide down from the first frets
+    if tech in SAME_STRING_TECHNIQUES:
+        # h/p and slides only exist on one string; a slide moves the hand by itself and cannot
+        # start or end on an open string
+        if ps != cs:
+            penalty += TECHNIQUE_PENALTY
+        elif tech in SLIDES:
+            move = 0.0
+            if cf == 0 or pf == 0:
+                penalty += TECHNIQUE_PENALTY * 0.75
+    return relax * move + (0.3 + 0.7 * relax) * string_move + penalty
 
 
 def optimize(notes: list[dict], tuning: Tuning, options: FingeringOptions | None = None,
