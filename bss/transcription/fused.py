@@ -27,6 +27,12 @@ DEFAULT_PARAMS = {
     "ghost_start_tol_sec": 0.08,
     "pyin_fill_min_sec": 0.10,
     "pyin_fill_vprob": 0.5,
+    # Slap mode (project option): keep notes whose ATTACK only adds the upper octave's series, i.e.
+    # pops over a ringing thumb note, instead of treating them as harmonics / octave errors of it.
+    # Synthetic slap riff: pops 8/16 -> 16/16 (thumb muted), 0/16 -> 12/16 (thumb ringing). Off by
+    # default: on songs without slap it also flips 2-3 % of notes and there is no ground truth to
+    # show whether that helps.
+    "octave_attack": False,
 }
 
 def is_harmonic_interval(semitones: int, max_h: int = 10) -> bool:
@@ -85,6 +91,12 @@ def remove_harmonic_ghosts(an: BassAnalysis, notes: list[dict], p: dict) -> list
             t0, t1 = max(L["start_sec"], H["start_sec"]), min(L["end_sec"], H["end_sec"])
             real, _ = _is_real_fundamental(an, t0, t1, L["midi_pitch"], p["odd_ratio_min"])
             if real:
+                if p["octave_attack"] and interval == 12 and H["start_sec"] > L["start_sec"] + tol \
+                        and an.attack_is_octave_up(H["start_sec"], L["midi_pitch"]):
+                    # a new note an octave up over the ringing low note (slap pop, octave riff),
+                    # not a harmonic of it: keep it (the monophonic trim ends L there)
+                    H["flags"] = sorted(set(H["flags"]) | {"octave_attack"})
+                    continue
                 dead.add(hi)
                 L["_amp"] = max(L.get("_amp", 0), H.get("_amp", 0))
                 if H["start_sec"] > L["start_sec"] + tol:
@@ -148,6 +160,19 @@ def correct_octaves(an: BassAnalysis, notes: list[dict], p: dict) -> list[dict]:
                 higher = [c for c in cands if c > orig and ratio[c] >= thr]
                 if higher:
                     choice = higher[0]
+        if p["octave_attack"] and choice != orig and orig - choice in (12, 24):
+            # If the attack added only the upper octave's series, the note is higher than
+            # ``choice`` (e.g. a slap pop while the thumb note an octave below still rings). The
+            # test says "at least one octave up", so a two-octave move is checked step by step.
+            up = choice
+            while up < orig and ("octave_attack" in n["flags"] and up == choice
+                                 or an.attack_is_octave_up(n["start_sec"], up)):
+                up += 12
+            if up != choice:
+                n["flags"] = sorted(set(n["flags"]) | {"octave_attack"})
+                choice = up
+                if choice == orig:
+                    continue
         if choice != orig:
             n["midi_pitch"] = choice
             n["flags"] = sorted(set(n["flags"]) | {"octave_fixed"})
@@ -311,6 +336,21 @@ def score_confidence(an: BassAnalysis, notes: list[dict], p: dict) -> list[dict]
     return notes
 
 
+def drop_octave_twins(notes: list[dict], p: dict) -> list[dict]:
+    """Slap mode: when a note kept by the attack test starts together with a note an octave below,
+    that lower note is a false re-attack (the pop's loudness rise split the thumb note)."""
+    if not p["octave_attack"]:
+        return notes
+    kept = [n for n in notes if "octave_attack" in n["flags"]]
+    drop = set()
+    for k in kept:
+        for i, n in enumerate(notes):
+            if n is not k and k["midi_pitch"] - n["midi_pitch"] in (12, 24) \
+                    and abs(n["start_sec"] - k["start_sec"]) < p["chord_window_sec"] and "octave_attack" not in n["flags"]:
+                drop.add(i)
+    return [n for i, n in enumerate(notes) if i not in drop]
+
+
 def monophonic_trim(notes: list[dict], p: dict) -> list[dict]:
     notes = sorted(notes, key=lambda n: (n["start_sec"], n["midi_pitch"]))
     deduped: list[dict] = []
@@ -343,6 +383,7 @@ def fuse(an: BassAnalysis, bp_events: list[dict], pyin_notes: list[dict], params
     notes = snap_onsets(an, notes, p)
     notes = prune(an, notes, p)
     notes = fill_from_pyin(an, notes, pyin_notes, p)
+    notes = drop_octave_twins(notes, p)
     notes = monophonic_trim(notes, p)
     notes = score_confidence(an, notes, p)
     for n in notes:

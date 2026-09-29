@@ -1026,13 +1026,17 @@ class App {
     const qDisp = el('input', { type: 'checkbox', checked: !!p.quantize?.display });
     const qExp = el('input', { type: 'checkbox', checked: !!p.quantize?.export });
     const thr = el('input', { type: 'number', min: 0, max: 1, step: 0.05, value: p.confidence_threshold ?? 0.5 });
+    const slap = el('input', { type: 'checkbox', checked: !!p.transcription_options?.slap });
     const title = el('input', { type: 'text', value: p.title || '' });
     const tr = el('select', {}, ...[['fused', 'Basic Pitch + pYIN/onset 補正（推奨）'], ['basic_pitch', 'Basic Pitch のみ'], ['pyin', 'pYIN のみ（ベース単独録音向き）']]
       .map(([v, l]) => el('option', { value: v, selected: (p.transcriber || 'fused') === v, disabled: this.system && this.system.transcribers && !this.system.transcribers[v] }, l)));
     const dev = el('select', {}, ...[['auto', '自動（GPU があれば使用）'], ['cpu', 'CPU'], ['cuda', 'GPU (CUDA)']].map(([v, l]) => el('option', { value: v, selected: (p.separator?.device || 'auto') === v }, l)));
     const shifts = el('select', {}, ...[[0, '0（速い）'], [1, '1（標準）'], [2, '2（高品質・約2倍の時間）']].map(([v, l]) => el('option', { value: v, selected: (p.separator?.shifts ?? 1) === v }, l)));
     const quality = el('select', {}, el('option', { value: 'default', selected: this.engine.preset === 'default' }, '標準（高音質）'), el('option', { value: 'cheaper', selected: this.engine.preset === 'cheaper' }, '軽量（CPU 負荷が高い場合）'));
-    const env = p.separation ? `${p.separation.model} / ${p.separation.device} / demucs ${p.separation.demucs} / torch ${p.separation.torch} / 分離 ${p.separation.elapsed_sec}s` : '未分離';
+    const bassFt = el('input', { type: 'checkbox', checked: !!p.separator?.bass_model });
+    const sep = p.separation;
+    const bassInfo = sep?.bass_model ? ` + ベース ${sep.bass_model}` : sep?.bass_model_error ? '（ベース高精度モデルは失敗: 6パートのベースを使用）' : '';
+    const env = sep ? `${sep.model}${bassInfo} / ${sep.device} / demucs ${sep.demucs} / torch ${sep.torch} / 分離 ${sep.elapsed_sec}s` : '未分離';
     const body = el('div', {},
       el('fieldset', {}, el('legend', {}, '曲'), el('div', { class: 'grid' }, el('label', {}, '曲名'), title)),
       el('fieldset', {}, el('legend', {}, 'チューニング・運指'), el('div', { class: 'grid' },
@@ -1051,10 +1055,15 @@ class App {
         el('p', { class: 'note' }, 'テンポは採譜のあとに自動推定します（譜面表示・Guitar Pro 書き出しに使用）。タイムラインの量子化は既定なし（原曲の揺れを保持）。')),
       el('fieldset', {}, el('legend', {}, '採譜'), el('div', { class: 'grid' },
         el('label', {}, '採譜方式'), tr,
-        el('label', {}, '低信頼のしきい値'), thr)),
+        el('label', {}, '低信頼のしきい値'), thr,
+        el('label', {}, 'スラップ向け'), el('div', { class: 'inline' }, slap,
+          el('span', { class: 'dim small' }, '親指の音の1オクターブ上のプルを残す（再採譜で反映）'))),
+        el('p', { class: 'note' }, 'スラップ向け：弾いた瞬間に増えた成分が1オクターブ上だけなら、倍音やオクターブ誤りとして下げずに残します。スラップの無い曲では少し別の音も変わるため、既定はオフ。')),
       el('fieldset', {}, el('legend', {}, '音源分離・再生'), el('div', { class: 'grid' },
         el('label', {}, 'デバイス'), dev,
         el('label', {}, 'shifts'), shifts,
+        el('label', {}, 'ベースを高精度で'), el('div', { class: 'inline' }, bassFt,
+          el('span', { class: 'dim small' }, 'スラップやアタックの明るさがベースに残る（再分離で反映。+30秒〜1分、初回 84 MB 取得）')),
         el('label', {}, '伸縮エンジン'), quality,
         el('label', {}, '現在の分離'), el('span', { class: 'small dim' }, env))),
     );
@@ -1078,7 +1087,8 @@ class App {
           quantize: { grid: grid.value, display: qDisp.checked, export: qExp.checked },
           confidence_threshold: Number(thr.value),
           transcriber: tr.value,
-          separator: { ...(p.separator || {}), device: dev.value, shifts: Number(shifts.value) },
+          transcription_options: { ...(p.transcription_options || {}), slap: slap.checked },
+          separator: { ...(p.separator || {}), device: dev.value, shifts: Number(shifts.value), bass_model: bassFt.checked ? 'htdemucs_ft' : null },
         },
       };
     };

@@ -11,7 +11,24 @@ from bss.export.csv_export import to_csv_bytes
 from bss.export.midi import to_midi_bytes
 from bss.export.pdf_tab import to_pdf_bytes
 from bss.notes import make_note
-from bss.separation import alignment_check
+from bss.separation import alignment_check, replace_bass
+from bss.separation.demucs_sep import DemucsSeparator
+
+
+def test_replace_bass_keeps_the_sum():
+    rng = np.random.default_rng(0)
+    stems = {k: rng.normal(size=(2, 1000)).astype(np.float32) for k in ("vocals", "drums", "bass", "other", "guitar", "piano")}
+    new_bass = rng.normal(size=(2, 1000)).astype(np.float32)
+    out = replace_bass(stems, new_bass)
+    assert np.allclose(out["bass"], new_bass)
+    assert np.allclose(sum(out.values()), sum(stems.values()), atol=1e-5)  # mixer total unchanged
+    assert all(np.array_equal(out[k], stems[k]) for k in ("vocals", "drums", "guitar", "piano"))
+
+
+def test_bass_model_option():
+    assert DemucsSeparator(bass_model="htdemucs_ft").bass_model == "htdemucs_ft"
+    assert DemucsSeparator(bass_model=None).bass_model is None  # projects created before keep the 6-stem bass
+    assert DemucsSeparator(bass_model="nope").bass_model is None
 
 SR = 44100
 

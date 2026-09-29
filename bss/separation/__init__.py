@@ -61,6 +61,17 @@ def fit_length(x: np.ndarray, n: int) -> np.ndarray:
     return np.pad(x, pad)
 
 
+def replace_bass(stems: dict[str, np.ndarray], bass: np.ndarray, residual: str = "other") -> dict[str, np.ndarray]:
+    """Use another model's bass. The residual stem absorbs the difference, so the stems still add
+    up to exactly the same signal (mixer, headroom and "mute everything but ..." stay consistent)."""
+    out = dict(stems)
+    old = stems["bass"]
+    out["bass"] = np.asarray(bass, dtype=np.float32)
+    if residual in out:
+        out[residual] = (out[residual] + old - out["bass"]).astype(np.float32)
+    return out
+
+
 def alignment_check(mix: np.ndarray, stems: dict[str, np.ndarray], max_lag: int = 2048) -> dict:
     """Verify the stems share the mix's length and start: cross-correlate sum(stems) with the mix."""
     total = sum(stems.values())

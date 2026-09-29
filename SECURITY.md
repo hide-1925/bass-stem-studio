@@ -17,7 +17,7 @@
 
 - サーバーは `127.0.0.1`（この PC の中）だけで待ち受ける。同じネットワークの他の端末からは接続できない
 - 曲・ステム・音符・ログを外部へ送る処理は無い
-- 例外は **初回の分離でのモデルのダウンロード**（Hugging Face `adefossez/HTDemucs-6s`）と、セットアップ時の pip / PyTorch の取得だけ
+- 例外は **初回の分離でのモデルのダウンロード**（Hugging Face `adefossez/HTDemucs-6s`、ベースを高精度で分離する設定では `adefossez/HTDemucs-ft` のベース用 1 ファイル約 84 MB。取得できなければ Demucs の公式配布元 dl.fbaipublicfiles.com）と、セットアップ時の pip / PyTorch の取得だけ
 - API キー・パスワード・アカウントは使わない
 
 ## 診断レポート（ZIP）に入るもの

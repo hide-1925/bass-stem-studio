@@ -167,13 +167,13 @@ def system_report() -> dict:
     return rep
 
 
-def _model_cache_mb() -> float | None:
+def _model_cache_mb(repo: str = "HTDemucs-6s") -> float | None:
     try:
         from huggingface_hub import constants
 
         total = 0
         for dirpath, _, files in os.walk(constants.HF_HUB_CACHE):
-            if "HTDemucs" in dirpath:
+            if repo in dirpath:
                 total += sum(os.path.getsize(os.path.join(dirpath, f)) for f in files)
         return round(total / 1e6, 1)
     except Exception:
@@ -249,9 +249,12 @@ def self_check() -> list[dict]:
         import demucs  # noqa: F401
 
         mb = _model_cache_mb()
+        ft = _model_cache_mb("HTDemucs-ft")
+        bass = f"、ベース用 htdemucs_ft も取得済み（{ft} MB）" if ft and ft > 50 else \
+            "。ベース用 htdemucs_ft は初回の分離で約 84 MB を取得します"
         if mb and mb > 50:
-            return "ok", f"htdemucs_6s のモデルはダウンロード済み（{mb} MB）"
-        return "warn", "モデル未取得：初回の分離時に約 110 MB をダウンロードします（ネット接続が必要）"
+            return "ok", f"htdemucs_6s のモデルはダウンロード済み（{mb} MB）{bass}"
+        return "warn", "モデル未取得：初回の分離時に約 110 MB（＋ベース用 84 MB）をダウンロードします（ネット接続が必要）"
 
     def bp_check():
         from .transcription import basic_pitch_tr

@@ -50,6 +50,10 @@ SCRIPT = textwrap.dedent(r'''
     out["patch_score"] = (r.status_code, r.json()["project"]["score"]["staves"], r.json()["project"]["score"]["grid"])
     r = c.post(f"/api/projects/{pid}/tempo/estimate", json={})  # not decoded yet: no audio to analyse
     out["tempo_noaudio"] = r.status_code
+    from bss.app import _job_params
+    out["slap_default"] = "transcriber_params" in _job_params(c.get(f"/api/projects/{pid}").json()["project"], "transcribe")
+    r = c.patch(f"/api/projects/{pid}", json={"transcription_options": {"slap": True}})
+    out["slap_on"] = (r.status_code, _job_params(r.json()["project"], "transcribe").get("transcriber_params"))
     r = c.post("/api/diag/report", json={"project_id": pid})
     z = zipfile.ZipFile(io.BytesIO(r.content))
     out["report"] = (r.status_code, "report.json" in z.namelist(), any(n.endswith(".wav") for n in z.namelist()))
@@ -77,6 +81,8 @@ def test_api_smoke(tmp_path):
     assert out["score_grid"] == "1/16"
     assert out["patch_score"] == [200, "tab", "1/16"]  # deep-merged
     assert out["tempo_noaudio"] == 400
+    assert out["slap_default"] is False  # slap mode is opt-in
+    assert out["slap_on"] == [200, {"fused": {"octave_attack": True}}]
     assert out["report"] == [200, True, False]  # report.json present, no audio inside
     assert out["report_probe"] == "ok"
     assert not (ROOT / "workspace" / "projects" / "should-not-exist").exists()

@@ -21,7 +21,8 @@ SCHEMA_VERSION = 1
 
 # Keys the UI may PATCH. Analysis results (source/separation/transcription) are written by the server only.
 PATCHABLE_KEYS = {"title", "mixer", "playback", "tuning", "fingering", "tempo", "quantize",
-                  "confidence_threshold", "view", "separator", "transcriber", "fx", "score"}
+                  "confidence_threshold", "view", "separator", "transcriber", "fx", "score",
+                  "transcription_options"}
 
 # Keys the client always sends whole: replaced instead of deep-merged (so removals stick).
 REPLACE_KEYS = {"fx"}
@@ -56,6 +57,7 @@ def default_meta(project_id: str, title: str) -> dict:
         "transcription": None,
         "separator": copy.deepcopy(config.DEFAULT_SEPARATOR),
         "transcriber": config.DEFAULT_TRANSCRIBER,
+        "transcription_options": {"slap": False},  # slap: keep pops an octave above the thumb note
         "mixer": {
             "gains_db": {s: 0 for s in config.STEM_ORDER if s != config.FIXED_GAIN_STEM},
             "mute": {s: False for s in config.STEM_ORDER},

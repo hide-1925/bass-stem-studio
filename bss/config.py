@@ -31,7 +31,8 @@ STEM_LABELS_JA = {
 FIXED_GAIN_STEM = "bass"  # bass volume is fixed at 0 dB (mute/solo still allowed)
 GAIN_STEPS_DB = [-30, -20, -10, 0, 10]
 
-DEFAULT_SEPARATOR = {"name": "demucs", "model": "htdemucs_6s", "device": "auto", "shifts": 1, "overlap": 0.25}
+DEFAULT_SEPARATOR = {"name": "demucs", "model": "htdemucs_6s", "device": "auto", "shifts": 1, "overlap": 0.25,
+                     "bass_model": "htdemucs_ft"}  # bass from htdemucs_ft's bass specialist (see demucs_sep.py)
 DEFAULT_TRANSCRIBER = "fused"
 
 MAX_SNAPSHOTS = 50

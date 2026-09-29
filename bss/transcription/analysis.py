@@ -109,6 +109,42 @@ class BassAnalysis:
     def harmonic_energy(self, spectrum: np.ndarray, f0: float, n: int = 6) -> float:
         return float(sum(self.mag_at(spectrum, f0 * h) / h ** 0.5 for h in range(1, n + 1)))
 
+    # ---- what does an attack add? ------------------------------------
+    ATTACK_NFFT = 2048  # 93 ms: short enough to separate "before" and "after" an attack
+
+    def _short_spectrum(self, t: float) -> np.ndarray | None:
+        n = self.ATTACK_NFFT
+        a = int(round(t * self.sr)) - n // 2
+        if a < 0 or a + n > len(self.y):
+            return None
+        return np.abs(np.fft.rfft(self.y[a:a + n] * np.hanning(n)))
+
+    def attack_is_octave_up(self, t: float, low_midi: float, half_win: float = 0.055) -> bool | None:
+        """At an attack at ``t``, did the NEW energy come from a note an octave (or two) above
+        ``low_midi`` rather than from ``low_midi`` itself?
+
+        Compares the spectrum just after the attack with the one just before. A note an octave up
+        (e.g. a slap pop over a ringing thumb note) only adds energy at even multiples of the low
+        pitch; re-plucking the low note adds its odd multiples too. None = no clear attack there.
+        """
+        before, after = self._short_spectrum(t - half_win), self._short_spectrum(t + half_win)
+        if before is None or after is None:
+            return None
+        inc = np.maximum(0.0, after - before)
+        bin_hz = self.sr / self.ATTACK_NFFT
+        f = 440.0 * 2.0 ** ((low_midi - 69.0) / 12.0)
+
+        def mag(spec, fh):
+            i = int(round(fh / bin_hz))
+            return float(np.max(spec[max(0, i - 1):i + 2])) if i < len(spec) - 1 else 0.0
+
+        odd = np.mean([mag(inc, f * h) for h in (1, 3, 5)])
+        even = np.mean([mag(inc, f * h) for h in (2, 4, 6)])
+        even_after = np.mean([mag(after, f * h) for h in (2, 4, 6)])
+        if even_after <= 1e-9 or even < 0.3 * even_after:
+            return None  # the upper series did not really start here
+        return bool(odd < 0.2 * even)
+
 
 def analyze(y: np.ndarray, sr: int = SR, progress=None) -> BassAnalysis:
     """Run all frame-level analyses on a mono bass signal at 22.05 kHz."""

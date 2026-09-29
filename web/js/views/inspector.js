@@ -8,7 +8,7 @@ const SOURCE_LABEL = { basic_pitch: 'Basic Pitch', pyin: 'pYIN', fused: 'Basic P
 const FLAG_LABEL = {
   octave_fixed: 'オクターブ補正済み', pitch_disagree: 'pYIN と音高不一致', poly: '同時発音（保証外）',
   out_of_range: '音域外（弾けない）', split_pitch: '音高変化で分割', split_reattack: '再アタックで分割', pyin_only: 'pYIN のみで検出',
-  slide_detected: 'スライドを自動検出', dur_fixed: '音価を手で指定', triplet: '3連符に固定', straight: '3連符にしない',
+  slide_detected: 'スライドを自動検出', octave_attack: 'スラップ向け：弾いた瞬間の成分から上のオクターブと判定', dur_fixed: '音価を手で指定', triplet: '3連符に固定', straight: '3連符にしない',
 };
 const TECHNIQUES = [['', 'なし'], ['slide', 'スライド（前の音から・弾き直さない）'], ['slide_shift', 'スライド（前の音から・弾き直す）'],
   ['slide_in_below', 'スライドイン（下から）'], ['slide_in_above', 'スライドイン（上から）'],

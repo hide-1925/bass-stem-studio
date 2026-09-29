@@ -354,6 +354,8 @@ def _job_params(meta: dict, job_type: str, overrides: dict | None = None) -> dic
     params = {"separator": meta.get("separator") or config.DEFAULT_SEPARATOR,
               "transcriber": meta.get("transcriber") or config.DEFAULT_TRANSCRIBER,
               "tuning": meta.get("tuning"), "fingering": meta.get("fingering")}
+    if (meta.get("transcription_options") or {}).get("slap"):
+        params["transcriber_params"] = {"fused": {"octave_attack": True}}
     params.update(overrides or {})
     return params
 
